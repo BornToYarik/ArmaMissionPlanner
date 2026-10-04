@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArmaMissionPlanner.Core", "ArmaMissionPlanner.Core\ArmaMissionPlanner.Core.csproj", "{995E7C20-4B2F-4E44-BB7E-AC93F84EAF97}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArmaMissionPlanner.Cli", "ArmaMissionPlanner.Cli\ArmaMissionPlanner.Cli.csproj", "{84ED7F98-7B36-4C3B-8EAE-6EFD11DF933D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArmaMissionPlanner.Core.Tests", "ArmaMissionPlanner.Core.Tests\ArmaMissionPlanner.Core.Tests.csproj", "{38FA6138-7781-4ED8-A2A9-613ECDA054F8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{995E7C20-4B2F-4E44-BB7E-AC93F84EAF97}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{995E7C20-4B2F-4E44-BB7E-AC93F84EAF97}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{995E7C20-4B2F-4E44-BB7E-AC93F84EAF97}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{995E7C20-4B2F-4E44-BB7E-AC93F84EAF97}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84ED7F98-7B36-4C3B-8EAE-6EFD11DF933D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84ED7F98-7B36-4C3B-8EAE-6EFD11DF933D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84ED7F98-7B36-4C3B-8EAE-6EFD11DF933D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84ED7F98-7B36-4C3B-8EAE-6EFD11DF933D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{38FA6138-7781-4ED8-A2A9-613ECDA054F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{38FA6138-7781-4ED8-A2A9-613ECDA054F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{38FA6138-7781-4ED8-A2A9-613ECDA054F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{38FA6138-7781-4ED8-A2A9-613ECDA054F8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
