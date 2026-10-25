@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using ArmaMissionPlanner.Core.Models;
 using ArmaMissionPlanner.Core.Pbo;
 
@@ -6,14 +5,35 @@ namespace ArmaMissionPlanner.Core.Sqm;
 
 public static class MissionExtractor
 {
-    public static MissionInfo Extract(SqmClass root, PboArchive? archive = null)
+    // Префиксы статических декораций, которые не являются техникой или ящиками со снаряжением
+    private static readonly string[] SceneryPrefixes =
+    {
+        "Land_", "Misc_", "Fort_", "Wall_", "Sign_", "Fence", "BagFence",
+        "CamoNet_", "RoadCone", "RoadBarrier", "Hedgehog", "Trench", "Crater",
+        "Helper_", "Clutter", "Lamp", "PowerLines", "Tree", "Bush", "Rock"
+    };
+
+    public static MissionInfo Extract(SqmClass root, PboArchive? archive = null, string? pboFileName = null)
     {
         var mission = new MissionInfo();
+
+        if (!string.IsNullOrEmpty(pboFileName))
+        {
+            // wog_160_balkan_gambit_11.cup_chernarus_A3.pbo -> cup_chernarus_A3
+            var nameWithoutPbo = Path.GetFileNameWithoutExtension(pboFileName);
+            var lastDot = nameWithoutPbo.LastIndexOf('.');
+            if (lastDot >= 0 && lastDot < nameWithoutPbo.Length - 1)
+            {
+                mission.WorldName = nameWithoutPbo[(lastDot + 1)..];
+            }
+        }
 
         var scenarioData = root.GetClass("ScenarioData");
         if (scenarioData != null)
         {
             mission.Author = scenarioData.GetProperty("author")?.AsString() ?? "Unknown";
+            if (string.IsNullOrEmpty(mission.Overview))
+                mission.Overview = scenarioData.GetProperty("overviewText")?.AsString() ?? string.Empty;
         }
 
         var missionClass = root.GetClass("Mission");
@@ -23,14 +43,20 @@ public static class MissionExtractor
         if (intel != null)
         {
             mission.Name = intel.GetProperty("briefingName")?.AsString() ?? "No name";
-            mission.Overview = intel.GetProperty("overviewText")?.AsString() ?? string.Empty;
+            var intelOverview = intel.GetProperty("overviewText")?.AsString();
+            if (!string.IsNullOrEmpty(intelOverview))
+                mission.Overview = intelOverview;
         }
 
         var entities = missionClass.GetClass("Entities");
         if (entities != null)
         {
-            // Рекурсивно собираем все сущности (с учетом слоев Layer)
             CollectEntitiesRecursive(entities, mission, archive);
+        }
+
+        if (archive != null)
+        {
+            SqfParser.ExtractBriefing(mission, archive);
         }
 
         return mission;
@@ -42,38 +68,35 @@ public static class MissionExtractor
         {
             var dataType = item.GetProperty("dataType")?.AsString();
 
-            if (dataType == "Group")
+            switch (dataType)
             {
-                var group = ExtractGroup(item, archive);
-                if (group.Units.Count > 0)
-                {
-                    mission.Groups.Add(group);
-                }
-            }
-            else if (dataType == "Object")
-            {
-                var veh = ExtractVehicle(item);
-                if (veh != null)
-                {
-                    mission.Vehicles.Add(veh);
-                }
-            }
-            else if (dataType == "Marker")
-            {
-                var marker = ExtractMarker(item);
-                if (marker != null)
-                {
-                    mission.Markers.Add(marker);
-                }
-            }
-            else if (dataType == "Layer")
-            {
-                // Если это слой, внутри него в Entities лежит техника или отряды
-                var layerEntities = item.GetClass("Entities");
-                if (layerEntities != null)
-                {
-                    CollectEntitiesRecursive(layerEntities, mission, archive);
-                }
+                case "Group":
+                    var group = ExtractGroup(item, archive);
+                    if (group.Units.Count > 0)
+                        mission.Groups.Add(group);
+                    break;
+
+                case "Object":
+                    var veh = ExtractVehicleOrCrate(item, archive);
+                    if (veh != null)
+                        mission.Vehicles.Add(veh);
+                    break;
+
+                case "Marker":
+                    var marker = ExtractMarker(item);
+                    if (marker != null)
+                        mission.Markers.Add(marker);
+                    break;
+
+                case "Logic":
+                    ExtractLogicModule(item, mission);
+                    break;
+
+                case "Layer":
+                    var layerEntities = item.GetClass("Entities");
+                    if (layerEntities != null)
+                        CollectEntitiesRecursive(layerEntities, mission, archive);
+                    break;
             }
         }
     }
@@ -83,114 +106,209 @@ public static class MissionExtractor
         var group = new SquadGroup
         {
             Id = groupClass.GetProperty("id")?.AsInt() ?? 0,
-            Side = groupClass.GetProperty("side")?.AsString() ?? "Unknown"
+            Side = groupClass.GetProperty("side")?.AsString() ?? "Unknown",
+            CallSign = FindCustomAttributeValue(groupClass, "groupID") ?? string.Empty
         };
 
-        // Ищем позывной отделения в CustomAttributes
-        group.CallSign = FindAttributeValue(groupClass, "groupID");
-
         var subEntities = groupClass.GetClass("Entities");
-        if (subEntities != null)
+        if (subEntities == null) return group;
+
+        foreach (var unitClass in subEntities.Children.OfType<SqmClass>())
         {
-            foreach (var unitClass in subEntities.Children.OfType<SqmClass>())
+            if (unitClass.GetProperty("dataType")?.AsString() != "Object")
+                continue;
+
+            var attributes = unitClass.GetClass("Attributes");
+
+            var unit = new SquadUnit
             {
-                var unit = new SquadUnit
-                {
-                    Id = unitClass.GetProperty("id")?.AsInt() ?? 0,
-                    VehicleClass = unitClass.GetProperty("type")?.AsString() ?? string.Empty
-                };
+                Id = unitClass.GetProperty("id")?.AsInt() ?? 0,
+                VehicleClass = unitClass.GetProperty("type")?.AsString() ?? string.Empty,
+                RoleDescription = ReadEntityStringField(unitClass, attributes, "description"),
+                InitScript = ReadEntityStringField(unitClass, attributes, "init"),
+                IsPlayable = ReadPlayableFlag(unitClass, attributes)
+            };
 
-                // Имя слота из лобби сидит в атрибуте description или в корневом свойстве
-                var desc = FindAttributeValue(unitClass, "description");
-                if (string.IsNullOrEmpty(desc))
-                {
-                    desc = unitClass.GetProperty("description")?.AsString();
-                }
-                unit.RoleDescription = desc ?? string.Empty;
+            var (pos, dir) = ReadPositionAndDirection(unitClass);
+            unit.Position = pos;
+            unit.DirectionDegrees = dir;
 
-                // Init скрипт (может быть свойством init или атрибутом)
-                var init = unitClass.GetProperty("init")?.AsString();
-                if (string.IsNullOrEmpty(init))
-                {
-                    init = FindAttributeValue(unitClass, "init");
-                }
-                unit.InitScript = init ?? string.Empty;
-
-                // Если есть ссылка на архив, вытаскиваем оружие из sqf
-                if (archive != null)
-                {
-                    ExtractWeaponsFromScript(unit, archive, group.Side);
-                }
-
-                // Позиция
-                var posProp = unitClass.GetProperty("position");
-                if (posProp?.Value is object[] posArray)
-                {
-                    unit.Position = posArray.Select(Convert.ToSingle).ToArray();
-                }
-
-                group.Units.Add(unit);
+            if (archive != null && !string.IsNullOrEmpty(unit.InitScript))
+            {
+                SqfParser.PopulateUnitLoadout(unit, archive);
             }
+
+            group.Units.Add(unit);
         }
 
         return group;
     }
 
-    private static void ExtractWeaponsFromScript(SquadUnit unit, PboArchive archive, string side)
+    private static MissionVehicle? ExtractVehicleOrCrate(SqmClass item, PboArchive? archive)
     {
-        // 1. Ищем путь к sqf в поле init (например: execVM "saf\ko.sqf" или preprocessFileLineNumbers "saf\ko.sqf")
-        string? scriptPath = null;
-        if (!string.IsNullOrEmpty(unit.InitScript))
+        var typeName = item.GetProperty("type")?.AsString() ?? string.Empty;
+        if (string.IsNullOrEmpty(typeName)) return null;
+
+        var attributes = item.GetClass("Attributes");
+        var initScript = ReadEntityStringField(item, attributes, "init");
+        var customName = ReadEntityStringField(item, attributes, "name");
+        var description = ReadEntityStringField(item, attributes, "description");
+        var (pos, dir) = ReadPositionAndDirection(item);
+
+        var veh = new MissionVehicle
         {
-            var match = Regex.Match(unit.InitScript, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase);
-            if (match.Success)
-            {
-                scriptPath = match.Groups[1].Value.Replace("/", "\\");
-            }
+            Id = item.GetProperty("id")?.AsInt() ?? 0,
+            Side = item.GetProperty("side")?.AsString() ?? "Empty",
+            VehicleClass = typeName,
+            CustomName = customName,
+            Description = description,
+            InitScript = initScript,
+            Position = pos,
+            DirectionDegrees = dir
+        };
+
+        if (archive != null && !string.IsNullOrEmpty(initScript))
+        {
+            SqfParser.PopulateVehicleCargo(veh, archive);
         }
 
-        if (string.IsNullOrEmpty(scriptPath)) return;
-
-        // 2. Ищем файл в PBO
-        var entry = archive.Entries.FirstOrDefault(e => e.FileName.Equals(scriptPath, StringComparison.OrdinalIgnoreCase));
-        if (entry == null) return;
-
-        try
+        // Если это статическая декорация (Land_*, окоп, масксеть) и в ней нет инвентаря — пропускаем
+        bool isScenery = SceneryPrefixes.Any(prefix => typeName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        if (isScenery && !veh.Cargo.HasAnyCargo)
         {
-            var scriptText = archive.GetFileContentAsString(entry.FileName);
+            return null;
+        }
 
-            // Регулярка для addWeapon: _unit addWeapon "rhs_weap_ak74m";
-            var weaponMatches = Regex.Matches(scriptText, @"addWeapon\s+[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+        return veh;
+    }
 
-            var weapons = weaponMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
+    private static MissionMarker? ExtractMarker(SqmClass item)
+    {
+        var (pos, dir) = ReadPositionAndDirection(item);
 
-            foreach (var w in weapons)
+        return new MissionMarker
+        {
+            Name = item.GetProperty("name")?.AsString() ?? string.Empty,
+            Text = item.GetProperty("text")?.AsString() ?? string.Empty,
+            MarkerType = item.GetProperty("markerType")?.AsString() ?? "ICON",
+            IconType = item.GetProperty("type")?.AsString() ?? string.Empty,
+            ColorName = item.GetProperty("colorName")?.AsString() ?? "Default",
+            BrushName = item.GetProperty("fillName")?.AsString() ?? "Solid",
+            WidthA = item.GetProperty("a")?.AsFloat() ?? 1f,
+            HeightB = item.GetProperty("b")?.AsFloat() ?? 1f,
+            Angle = item.GetProperty("angle")?.AsFloat() ?? dir,
+            Alpha = item.GetProperty("alpha")?.AsFloat() ?? 1f,
+            Position = pos
+        };
+    }
+
+    private static void ExtractLogicModule(SqmClass logicItem, MissionInfo mission)
+    {
+        var moduleType = logicItem.GetProperty("type")?.AsString() ?? string.Empty;
+        if (!moduleType.StartsWith("WMT_", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var attrs = ReadAllCustomAttributes(logicItem);
+        foreach (var kv in attrs)
+        {
+            mission.WmtSettings.RawModuleAttributes[$"{moduleType}.{kv.Key}"] = kv.Value;
+        }
+
+        if (moduleType.Equals("WMT_Main", StringComparison.OrdinalIgnoreCase))
+        {
+            if (TryFindAttrInt(attrs, "ViewDistance", out int vd))
+                mission.WmtSettings.ViewDistance = vd;
+            if (TryFindAttrInt(attrs, "Terrain", out int tvd))
+                mission.WmtSettings.TerrainViewDistance = tvd;
+            if (TryFindAttrFloat(attrs, "Loss", out float loss))
+                mission.WmtSettings.HeavyLossesCoeff = loss;
+            if (TryFindAttrInt(attrs, "TI", out int ti))
             {
-                var lower = w.ToLower();
-                if (lower.Contains("rpg") || lower.Contains("launch") || lower.Contains("at4") || lower.Contains("nlaw") || lower.Contains("m72"))
+                mission.WmtSettings.ThermalMode = ti switch
                 {
-                    unit.SecondaryWeapon = w;
-                }
-                else if (lower.Contains("pistol") || lower.Contains("makarov") || lower.Contains("pya") || lower.Contains("m9"))
-                {
-                    unit.Handgun = w;
-                }
-                else
-                {
-                    if (string.IsNullOrEmpty(unit.PrimaryWeapon))
-                        unit.PrimaryWeapon = w;
-                    else
-                        unit.SecondaryWeapon = w; // Если вторая пушка
-                }
+                    0 => "Включен",
+                    1 => "Отключен в стрелковом (только в технике)",
+                    2 => "Полностью отключен",
+                    _ => $"Код {ti}"
+                };
             }
         }
-        catch
+        else if (moduleType.Equals("WMT_Time", StringComparison.OrdinalIgnoreCase))
         {
-            // Пропускаем битые файлы
+            if (TryFindAttrInt(attrs, "MissionTime", out int mTime) || TryFindAttrInt(attrs, "Time", out mTime))
+                mission.WmtSettings.MissionTimeMinutes = mTime;
+            if (TryFindAttrInt(attrs, "PrepareTime", out int pTime) || TryFindAttrInt(attrs, "Freeze", out pTime))
+                mission.WmtSettings.FreezeTimeMinutes = pTime;
+            if (TryFindAttrInt(attrs, "Zone", out int zSize))
+                mission.WmtSettings.StartZoneSize = zSize;
+        }
+        else if (moduleType.Equals("WMT_Point", StringComparison.OrdinalIgnoreCase))
+        {
+            var point = new WmtPointInfo
+            {
+                Name = FindFirstMatchingAttr(attrs, "Name", "Message", "Title") ?? "Зона",
+                Marker = FindFirstMatchingAttr(attrs, "Marker", "Zone") ?? string.Empty,
+                DefendingSide = FindFirstMatchingAttr(attrs, "DefSide", "Side", "Owner") ?? string.Empty
+            };
+            if (TryFindAttrInt(attrs, "Timer", out int timer) || TryFindAttrInt(attrs, "Time", out timer))
+                point.CaptureTimeSeconds = timer;
+
+            mission.WmtSettings.CapturePoints.Add(point);
         }
     }
 
-    private static string? FindAttributeValue(SqmClass parentClass, string attributeName)
+    private static (float[] Position, float DirectionDegrees) ReadPositionAndDirection(SqmClass entity)
+    {
+        float[] pos = Array.Empty<float>();
+        float dirDegrees = 0f;
+
+        var posInfo = entity.GetClass("PositionInfo");
+        if (posInfo != null)
+        {
+            var posProp = posInfo.GetProperty("position");
+            if (posProp?.Value is object[] arr)
+                pos = arr.Select(Convert.ToSingle).ToArray();
+
+            var anglesProp = posInfo.GetProperty("angles");
+            if (anglesProp?.Value is object[] angArr && angArr.Length >= 2)
+            {
+                float yawRadians = Convert.ToSingle(angArr[1]);
+                dirDegrees = yawRadians * (180f / MathF.PI);
+                if (dirDegrees < 0) dirDegrees += 360f;
+            }
+        }
+        else
+        {
+            var directPos = entity.GetProperty("position");
+            if (directPos?.Value is object[] arr)
+                pos = arr.Select(Convert.ToSingle).ToArray();
+        }
+
+        return (pos, dirDegrees);
+    }
+
+    private static string ReadEntityStringField(SqmClass entity, SqmClass? attributes, string fieldName)
+    {
+        var val = attributes?.GetProperty(fieldName)?.AsString();
+        if (!string.IsNullOrEmpty(val)) return val;
+
+        val = entity.GetProperty(fieldName)?.AsString();
+        if (!string.IsNullOrEmpty(val)) return val;
+
+        return FindCustomAttributeValue(entity, fieldName) ?? string.Empty;
+    }
+
+    private static bool ReadPlayableFlag(SqmClass entity, SqmClass? attributes)
+    {
+        int isPlayable = attributes?.GetProperty("isPlayable")?.AsInt()
+                         ?? entity.GetProperty("isPlayable")?.AsInt() ?? 0;
+        int isPlayer = attributes?.GetProperty("isPlayer")?.AsInt()
+                       ?? entity.GetProperty("isPlayer")?.AsInt() ?? 0;
+
+        return isPlayable == 1 || isPlayer == 1;
+    }
+
+    private static string? FindCustomAttributeValue(SqmClass parentClass, string attributeName)
     {
         var customAttributes = parentClass.GetClass("CustomAttributes");
         if (customAttributes == null) return null;
@@ -198,41 +316,87 @@ public static class MissionExtractor
         foreach (var attr in customAttributes.Children.OfType<SqmClass>())
         {
             var propName = attr.GetProperty("property")?.AsString();
-            if (string.Equals(propName, attributeName, StringComparison.OrdinalIgnoreCase))
+            if (propName != null && propName.Contains(attributeName, StringComparison.OrdinalIgnoreCase))
             {
                 var valClass = attr.GetClass("Value");
-                if (valClass != null)
+                var dataClass = valClass?.GetClass("data");
+                if (dataClass != null)
                 {
-                    return valClass.GetProperty("data")?.AsString();
+                    var valProp = dataClass.GetProperty("value");
+                    if (valProp != null) return valProp.AsString();
                 }
-                return attr.GetProperty("expression")?.AsString();
+
+                var directData = valClass?.GetProperty("data")?.AsString();
+                if (!string.IsNullOrEmpty(directData)) return directData;
             }
         }
 
         return null;
     }
 
-    private static MissionVehicle? ExtractVehicle(SqmClass item)
+    private static Dictionary<string, string> ReadAllCustomAttributes(SqmClass parentClass)
     {
-        var veh = new MissionVehicle
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var attributes = parentClass.GetClass("Attributes");
+        if (attributes != null)
         {
-            Id = item.GetProperty("id")?.AsInt() ?? 0,
-            Side = item.GetProperty("side")?.AsString() ?? "Unknown",
-            VehicleClass = item.GetProperty("type")?.AsString() ?? string.Empty
-        };
+            foreach (var p in attributes.Children.OfType<SqmProperty>())
+                result[p.Name] = p.AsString();
+        }
 
-        var initProp = item.GetProperty("init");
-        if (initProp != null) veh.InitScript = initProp.AsString();
+        var customAttributes = parentClass.GetClass("CustomAttributes");
+        if (customAttributes != null)
+        {
+            foreach (var attr in customAttributes.Children.OfType<SqmClass>())
+            {
+                var propName = attr.GetProperty("property")?.AsString();
+                if (string.IsNullOrEmpty(propName)) continue;
 
-        return veh;
+                var valProp = attr.GetClass("Value")?.GetClass("data")?.GetProperty("value");
+                if (valProp != null)
+                {
+                    result[propName] = valProp.AsString();
+                }
+            }
+        }
+
+        return result;
     }
 
-    private static MissionMarker? ExtractMarker(SqmClass item)
+    private static bool TryFindAttrInt(Dictionary<string, string> attrs, string keyPart, out int value)
     {
-        return new MissionMarker
+        foreach (var kv in attrs)
         {
-            Name = item.GetProperty("name")?.AsString() ?? string.Empty,
-            MarkerType = item.GetProperty("markerType")?.AsString() ?? string.Empty
-        };
+            if (kv.Key.Contains(keyPart, StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(kv.Value, out value)) return true;
+                if (float.TryParse(kv.Value, out float fVal)) { value = (int)fVal; return true; }
+            }
+        }
+        value = 0;
+        return false;
+    }
+
+    private static bool TryFindAttrFloat(Dictionary<string, string> attrs, string keyPart, out float value)
+    {
+        foreach (var kv in attrs)
+        {
+            if (kv.Key.Contains(keyPart, StringComparison.OrdinalIgnoreCase) &&
+                float.TryParse(kv.Value, out value))
+                return true;
+        }
+        value = 0f;
+        return false;
+    }
+
+    private static string? FindFirstMatchingAttr(Dictionary<string, string> attrs, params string[] keyParts)
+    {
+        foreach (var part in keyParts)
+        {
+            var match = attrs.FirstOrDefault(kv => kv.Key.Contains(part, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(match.Value)) return match.Value;
+        }
+        return null;
     }
 }

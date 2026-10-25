@@ -1,77 +1,42 @@
 ﻿using ArmaMissionPlanner.Core.Pbo;
 using ArmaMissionPlanner.Core.Sqm;
 
-const string missionPath = @"F:\projects\wog_160_balkan_gambit_11.cup_chernarus_A3.pbo"; // Твой путь
+const string missionPath = @"F:\projects\wog_160_balkan_gambit_11.cup_chernarus_A3.pbo";
 
 using var archive = PboArchive.Open(missionPath);
 var sqmEntry = archive.Entries.First(e => e.FileName.Equals("mission.sqm", StringComparison.OrdinalIgnoreCase));
 var root = RapReader.ReadFromBytes(archive.GetFileData(sqmEntry));
 
-Console.WriteLine("=== 1. ИНСПЕКТОР ЮНИТА (ID 15: I_officer_F) ===");
+var mission = MissionExtractor.Extract(root, archive, missionPath);
 
-// Рекурсивный поиск класса юнита с id = 15
-SqmClass? FindUnitById(SqmClass current, int targetId)
+Console.WriteLine($"Миссия: {mission.Name} | Остров: {mission.WorldName} | Автор: {mission.Author}");
+Console.WriteLine($"Описание лобби: {mission.Overview}");
+Console.WriteLine($"WMT: Прорисовка={mission.WmtSettings.ViewDistance}м, Земля={mission.WmtSettings.TerrainViewDistance}м, ТПВ={mission.WmtSettings.ThermalMode}, Время={mission.WmtSettings.MissionTimeMinutes} мин");
+
+Console.WriteLine($"\n--- Модули WMT (все атрибуты: {mission.WmtSettings.RawModuleAttributes.Count}) ---");
+foreach (var kv in mission.WmtSettings.RawModuleAttributes)
+    Console.WriteLine($"  {kv.Key} = {kv.Value}");
+
+Console.WriteLine($"\n--- Брифинг (вкладок: {mission.Briefing.Count}, картинок форм: {mission.BriefingImages.Count}) ---");
+foreach (var b in mission.Briefing)
+    Console.WriteLine($"  [{b.Title}] ({b.HtmlText.Length} симв.)");
+foreach (var img in mission.BriefingImages)
+    Console.WriteLine($"  Картинка: {img}");
+
+Console.WriteLine($"\n--- Отделения ({mission.Groups.Count}) ---");
+foreach (var g in mission.Groups.Take(5))
 {
-    var idProp = current.GetProperty("id");
-    if (idProp != null && idProp.AsInt() == targetId)
-        return current;
-
-    foreach (var sub in current.Children.OfType<SqmClass>())
+    Console.WriteLine($"[{g.Side}] {g.CallSign} (Слотов: {g.Units.Count})");
+    foreach (var u in g.Units.Take(3))
     {
-        var found = FindUnitById(sub, targetId);
-        if (found != null) return found;
-    }
-    return null;
-}
-
-var unit15 = FindUnitById(root, 15);
-if (unit15 != null)
-{
-    Console.WriteLine($"Класс найден: {unit15.Name}");
-    Console.WriteLine("--- Все прямые свойства юнита ---");
-    foreach (var p in unit15.Children.OfType<SqmProperty>())
-    {
-        Console.WriteLine($"  {p.Name} = {p.Value}");
-    }
-
-    Console.WriteLine("--- Все подклассы юнита ---");
-    void DumpSubTree(SqmClass cls, int depth = 1)
-    {
-        var prefix = new string(' ', depth * 2);
-        Console.WriteLine($"{prefix}[class] {cls.Name}");
-        foreach (var p in cls.Children.OfType<SqmProperty>())
-            Console.WriteLine($"{prefix}  {p.Name} = {p.Value}");
-        foreach (var sub in cls.Children.OfType<SqmClass>())
-            DumpSubTree(sub, depth + 1);
-    }
-    foreach (var sub in unit15.Children.OfType<SqmClass>())
-    {
-        DumpSubTree(sub);
+        var posStr = u.Position.Length >= 3 ? $"X={u.Position[0]:F0}, Y={u.Position[2]:F0}" : "Нет координат";
+        Console.WriteLine($"   - {u.RoleDescription} ({u.VehicleClass}) | Пушка: {u.PrimaryWeapon} | Форма: {u.Loadout.Uniform} | Предметов: {u.Loadout.ItemsAndMagazines.Values.Sum()} | [{posStr}]");
     }
 }
-else
-{
-    Console.WriteLine("Юнит с ID 15 не найден.");
-}
 
-Console.WriteLine("\n=== 2. СОДЕРЖИМОЕ saf\\ko.sqf (первые 300 символов) ===");
-try
+Console.WriteLine($"\n--- Техника и ящики ({mission.Vehicles.Count}) ---");
+foreach (var v in mission.Vehicles.Where(x => x.Cargo.HasAnyCargo || !string.IsNullOrEmpty(x.InitScript)).Take(10))
 {
-    var koText = archive.GetFileContentAsString(@"saf\ko.sqf");
-    Console.WriteLine(koText.Length > 300 ? koText[..300] + "..." : koText);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Ошибка чтения saf\\ko.sqf: {ex.Message}");
-}
-
-Console.WriteLine("\n=== 3. СОДЕРЖИМОЕ init.sqf (первые 300 символов) ===");
-try
-{
-    var initText = archive.GetFileContentAsString("init.sqf");
-    Console.WriteLine(initText.Length > 300 ? initText[..300] + "..." : initText);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Ошибка чтения init.sqf: {ex.Message}");
+    var posStr = v.Position.Length >= 3 ? $"X={v.Position[0]:F0}, Y={v.Position[2]:F0}" : "Нет координат";
+    Console.WriteLine($"  [{v.VehicleClass}] Имя: {v.CustomName} | [{posStr}] | Пушек в кузове: {v.Cargo.Weapons.Values.Sum()}, БК: {v.Cargo.Magazines.Values.Sum()}, Предметов: {v.Cargo.Items.Values.Sum()}");
 }
