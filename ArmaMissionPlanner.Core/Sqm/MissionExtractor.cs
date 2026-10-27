@@ -58,7 +58,7 @@ public static class MissionExtractor
         {
             SqfParser.ExtractBriefing(mission, archive);
         }
-
+        AssignDefaultCallSigns(mission.Groups);
         return mission;
     }
 
@@ -201,61 +201,103 @@ public static class MissionExtractor
             Position = pos
         };
     }
+    private static void AssignDefaultCallSigns(List<SquadGroup> groups)
+    {
+        var phonetic = new[] { "Альфа", "Браво", "Чарли", "Дельта", "Эхо", "Фокстрот" };
+
+        foreach (var sideGroup in groups.GroupBy(g => g.Side))
+        {
+            int index = 0;
+            foreach (var g in sideGroup)
+            {
+                if (string.IsNullOrWhiteSpace(g.CallSign))
+                {
+                    int block = (index / 6) + 1;
+                    int num = (index % 6) + 1;
+                    g.CallSign = $"{phonetic[0]} {block}-{num}";
+                }
+                index++;
+
+                // Вытаскиваем описание отделения и технику из скобок у 1-го слота (КО)
+                var leaderRole = g.Units.FirstOrDefault()?.RoleDescription;
+                if (!string.IsNullOrEmpty(leaderRole))
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(leaderRole, @"\(([^)]+)\)");
+                    if (match.Success)
+                    {
+                        g.SquadDescription = match.Groups[1].Value.Trim();
+                    }
+                }
+            }
+        }
+    }
 
     private static void ExtractLogicModule(SqmClass logicItem, MissionInfo mission)
     {
-        var moduleType = logicItem.GetProperty("type")?.AsString() ?? string.Empty;
-        if (!moduleType.StartsWith("WMT_", StringComparison.OrdinalIgnoreCase))
-            return;
+    var moduleType = logicItem.GetProperty("type")?.AsString() ?? string.Empty;
+    if (!moduleType.StartsWith("WMT_", StringComparison.OrdinalIgnoreCase))
+        return;
 
-        var attrs = ReadAllCustomAttributes(logicItem);
-        foreach (var kv in attrs)
-        {
-            mission.WmtSettings.RawModuleAttributes[$"{moduleType}.{kv.Key}"] = kv.Value;
-        }
+    var attrs = ReadAllCustomAttributes(logicItem);
+    foreach (var kv in attrs)
+        mission.WmtSettings.RawModuleAttributes[$"{moduleType}.{kv.Key}"] = kv.Value;
 
-        if (moduleType.Equals("WMT_Main", StringComparison.OrdinalIgnoreCase))
+    var wmt = mission.WmtSettings;
+
+    if (moduleType.Equals("WMT_Main", StringComparison.OrdinalIgnoreCase))
+    {
+        if (attrs.TryGetValue("WMT_Main_MaxViewDistance", out var vd) && int.TryParse(vd, out int vdInt))
+            wmt.ViewDistance = vdInt;
+        if (attrs.TryGetValue("WMT_Main_MaxViewDistanceTerrain", out var tvd) && int.TryParse(tvd, out int tvdInt))
+            wmt.TerrainViewDistance = tvdInt;
+        if (attrs.TryGetValue("WMT_Main_HeavyLossesCoeff", out var loss) &&
+            float.TryParse(loss.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float lossFloat))
+            wmt.HeavyLossesCoeff = lossFloat;
+        if (attrs.TryGetValue("WMT_Main_TI", out var ti) && int.TryParse(ti, out int tiInt))
         {
-            if (TryFindAttrInt(attrs, "ViewDistance", out int vd))
-                mission.WmtSettings.ViewDistance = vd;
-            if (TryFindAttrInt(attrs, "Terrain", out int tvd))
-                mission.WmtSettings.TerrainViewDistance = tvd;
-            if (TryFindAttrFloat(attrs, "Loss", out float loss))
-                mission.WmtSettings.HeavyLossesCoeff = loss;
-            if (TryFindAttrInt(attrs, "TI", out int ti))
+            wmt.ThermalMode = tiInt switch
             {
-                mission.WmtSettings.ThermalMode = ti switch
-                {
-                    0 => "Включен",
-                    1 => "Отключен в стрелковом (только в технике)",
-                    2 => "Полностью отключен",
-                    _ => $"Код {ti}"
-                };
-            }
-        }
-        else if (moduleType.Equals("WMT_Time", StringComparison.OrdinalIgnoreCase))
-        {
-            if (TryFindAttrInt(attrs, "MissionTime", out int mTime) || TryFindAttrInt(attrs, "Time", out mTime))
-                mission.WmtSettings.MissionTimeMinutes = mTime;
-            if (TryFindAttrInt(attrs, "PrepareTime", out int pTime) || TryFindAttrInt(attrs, "Freeze", out pTime))
-                mission.WmtSettings.FreezeTimeMinutes = pTime;
-            if (TryFindAttrInt(attrs, "Zone", out int zSize))
-                mission.WmtSettings.StartZoneSize = zSize;
-        }
-        else if (moduleType.Equals("WMT_Point", StringComparison.OrdinalIgnoreCase))
-        {
-            var point = new WmtPointInfo
-            {
-                Name = FindFirstMatchingAttr(attrs, "Name", "Message", "Title") ?? "Зона",
-                Marker = FindFirstMatchingAttr(attrs, "Marker", "Zone") ?? string.Empty,
-                DefendingSide = FindFirstMatchingAttr(attrs, "DefSide", "Side", "Owner") ?? string.Empty
+                0 => "Включен везде",
+                1 => "Отключен в стрелковом (только в технике)",
+                2 => "Полностью отключен",
+                _ => $"Код {tiInt}"
             };
-            if (TryFindAttrInt(attrs, "Timer", out int timer) || TryFindAttrInt(attrs, "Time", out timer))
-                point.CaptureTimeSeconds = timer;
-
-            mission.WmtSettings.CapturePoints.Add(point);
         }
     }
+    else if (moduleType.Equals("WMT_Time", StringComparison.OrdinalIgnoreCase))
+    {
+        if (attrs.TryGetValue("WMT_Time_MissionTime", out var mt) && int.TryParse(mt, out int mtInt))
+            wmt.MissionTimeMinutes = mtInt;
+        if (attrs.TryGetValue("WMT_Time_PrepareTime", out var pt) && int.TryParse(pt, out int ptInt))
+            wmt.FreezeTimeMinutes = ptInt;
+        if (attrs.TryGetValue("WMT_Time_StartZone", out var sz) && int.TryParse(sz, out int szInt))
+            wmt.StartZoneSize = szInt;
+        if (attrs.TryGetValue("WMT_Time_WinnerByTimeText", out var winText))
+            wmt.WinnerByTimeText = winText;
+    }
+    else if (moduleType.Equals("WMT_Task_CapturePoint", StringComparison.OrdinalIgnoreCase))
+    {
+        if (attrs.TryGetValue("WMT_Task_CapturePoint_Message", out var msg))
+            wmt.CapturePointWinnerText = msg;
+        if (attrs.TryGetValue("WMT_Task_CapturePoint_Count", out var cnt) && int.TryParse(cnt, out int cntInt))
+            wmt.CapturePointRequiredCount = cntInt;
+    }
+    else if (moduleType.Equals("WMT_Task_Point", StringComparison.OrdinalIgnoreCase) ||
+             moduleType.Equals("WMT_Point", StringComparison.OrdinalIgnoreCase))
+    {
+        var point = new WmtPointInfo
+        {
+            Name = attrs.GetValueOrDefault("WMT_Task_Point_MarkerText")
+                   ?? attrs.GetValueOrDefault("WMT_Task_Point_Message") ?? "Зона",
+            Marker = attrs.GetValueOrDefault("WMT_Task_Point_Marker") ?? string.Empty,
+            DefendingSide = attrs.GetValueOrDefault("WMT_Task_Point_Owner") ?? string.Empty
+        };
+        if (attrs.TryGetValue("WMT_Task_Point_Timer", out var t) && int.TryParse(t, out int tInt))
+            point.CaptureTimeSeconds = tInt;
+
+        wmt.CapturePoints.Add(point);
+    }
+}
 
     private static (float[] Position, float DirectionDegrees) ReadPositionAndDirection(SqmClass entity)
     {

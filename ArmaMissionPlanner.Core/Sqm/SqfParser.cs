@@ -94,7 +94,6 @@ public static class SqfParser
 
     public static void ExtractBriefing(MissionInfo mission, PboArchive archive)
     {
-        // Ищем все sqf файлы, связанные с брифингом (или проверяем init.sqf)
         var briefingEntries = archive.Entries
             .Where(e => e.FileName.Contains("briefing", StringComparison.OrdinalIgnoreCase) &&
                         e.FileName.EndsWith(".sqf", StringComparison.OrdinalIgnoreCase))
@@ -105,23 +104,26 @@ public static class SqfParser
             var text = ReadScriptSafe(archive, entry.FileName);
             if (string.IsNullOrEmpty(text)) continue;
 
-            // Ищем записи вида ["diary", ["Заголовок", "Текст"]] или macros B_RF / createDiaryRecord
-            var recordRegex = new Regex(@"\[\s*[""']diary[""']\s*,\s*\[\s*[""']([^""']+)[""']\s*,\s*[""']([\s\S]*?)[""']\s*\]\s*\]", RegexOptions.IgnoreCase);
+            // В SQF внутри строки "..." кавычки экранируются как ""
+            var recordRegex = new Regex(
+                @"\[\s*[""']diary[""']\s*,\s*\[\s*[""']([^""']+)[""']\s*,\s*""((?:[^""]|"""")*)""\s*\]\s*\]",
+                RegexOptions.IgnoreCase);
+
             foreach (Match m in recordRegex.Matches(text))
             {
                 var title = m.Groups[1].Value.Trim();
-                var content = m.Groups[2].Value.Trim();
+                // Заменяем сдвоенные кавычки "" обратно на одинарные '
+                var content = m.Groups[2].Value.Replace("\"\"", "'").Trim();
 
                 mission.Briefing.Add(new BriefingSection
                 {
-                    Title = $"{title} ({Path.GetFileNameWithoutExtension(entry.FileName)})",
+                    Title = title,
                     HtmlText = content
                 });
 
-                // Ищем картинки форм внутри текста брифинга: <img image='...' />
                 foreach (Match imgMatch in Regex.Matches(content, @"image\s*=\s*['""]([^'""]+)['""]", RegexOptions.IgnoreCase))
                 {
-                    var imgPath = imgMatch.Groups[1].Value.Replace("/", "\\");
+                    var imgPath = imgMatch.Groups[1].Value.Replace("/", "\\").TrimStart('\\');
                     if (!mission.BriefingImages.Contains(imgPath, StringComparer.OrdinalIgnoreCase))
                         mission.BriefingImages.Add(imgPath);
                 }
