@@ -5,7 +5,7 @@ import {
   Upload, Users, Map as MapIcon, FileText, Shield, Truck,
   Download, Copy, Eye, ChevronDown, ChevronRight, Plus, Trash2, Crosshair
 } from 'lucide-react';
-
+import 'leaflet/dist/leaflet.css';
 import type {
   MissionInfo, SquadUnit, MissionVehicle, TacticalPlanMarker
 } from './types';
@@ -220,6 +220,29 @@ export default function App() {
     }
   };
 
+  // Автоматически подгружаем map.json острова при загрузке миссии (чтобы выставить правильный worldSize)
+  const [mapConfig, setMapConfig] = useState<{
+    worldSize: number;
+    imageSize: number;
+    multiplier: number;
+    maxZoom: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!mission?.worldName) return;
+    fetch(`/api/maps/${mission.worldName.toLowerCase()}/map.json`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(cfg => {
+          if (cfg && cfg.worldSize) {
+            setMapConfig(cfg);
+            setWorldSize(cfg.worldSize);
+          } else {
+            setMapConfig(null);
+          }
+        })
+        .catch(() => setMapConfig(null));
+  }, [mission?.worldName]);
+
   // Инициализация и отрисовка тактической карты Leaflet
   useEffect(() => {
     if (activeTab !== 'map' || !mission || !mapContainerRef.current) return;
@@ -229,10 +252,21 @@ export default function App() {
       leafletMapRef.current = null;
     }
 
+    const maxZoom = mapConfig?.maxZoom ?? 7;
+    const multiplier = mapConfig?.multiplier ?? 1;
+    // На зуме 0 один пиксель тайла равен scale игровых метров (для Altis = 128)
+    const scale = Math.pow(2, maxZoom) / multiplier;
+
+    // Кастомная CRS: оставляет твои координаты [y, x] в метрах Армы (0..worldSize),
+    // но масштабирует тайлы GDAL2Tiles ровно под размер острова!
+    const armaCrs = L.extend({}, L.CRS.Simple, {
+      transformation: new L.Transformation(1 / scale, 0, -1 / scale, worldSize / scale),
+    });
+
     const map = L.map(mapContainerRef.current, {
-      crs: L.CRS.Simple,
-      minZoom: -5,
-      maxZoom: 2,
+      crs: armaCrs,
+      minZoom: 0,
+      maxZoom: maxZoom,
     });
     leafletMapRef.current = map;
 
@@ -240,17 +274,28 @@ export default function App() {
       [0, 0],
       [worldSize, worldSize],
     ];
-    
-    map.fitBounds(bounds);
 
     // Подложка координатной сетки Армы (по 1 км)
     const gridGroup = L.layerGroup().addTo(map);
-    L.rectangle(bounds, { color: '#334155', weight: 2, fillColor: '#0b1320', fillOpacity: 1 }).addTo(gridGroup);
+    L.rectangle(bounds).addTo(gridGroup);
 
+    // Слой топографической карты из папки maps/<worldName>/{z}/{x}/{y}.png
+    const worldKey = mission.worldName.toLowerCase();
+    L.tileLayer(`/api/maps/${worldKey}/{z}/{x}/{y}.png`, {
+      minZoom: 0,
+      maxZoom: maxZoom,
+      tileSize: 256,
+      noWrap: true,
+      bounds: bounds,
+    }).addTo(map);
+
+    // Сетка 1х1 км поверх карты (полупрозрачная)
     for (let i = 0; i <= worldSize; i += 1000) {
-      L.polyline([[0, i], [worldSize, i]], { color: '#1e293b', weight: 1 }).addTo(gridGroup);
-      L.polyline([[i, 0], [i, worldSize]], { color: '#1e293b', weight: 1 }).addTo(gridGroup);
+      L.polyline([[0, i], [worldSize, i]], { color: 'rgba(30, 41, 59, 0.35)', weight: 1 }).addTo(gridGroup);
+      L.polyline([[i, 0], [i, worldSize]], { color: 'rgba(30, 41, 59, 0.35)', weight: 1 }).addTo(gridGroup);
     }
+
+    map.fitBounds(bounds);
 
     // 1. Отрисовка маркеров из самой миссии (зоны, задачи)
     mission.markers.forEach(m => {
@@ -334,13 +379,12 @@ export default function App() {
         },
       ]);
     });
-    
 
     return () => {
       map.remove();
       leafletMapRef.current = null;
     };
-  }, [activeTab, mission, worldSize]);
+  }, [activeTab, mission, worldSize, mapConfig]);
 
   // Обновление слоя меток КС-а при добавлении/удалении
   useEffect(() => {

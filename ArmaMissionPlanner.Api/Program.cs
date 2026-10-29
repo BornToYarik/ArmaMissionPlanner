@@ -1,7 +1,15 @@
+using System;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
 using ArmaMissionPlanner.Core.Models;
 using ArmaMissionPlanner.Core.Pbo;
 using ArmaMissionPlanner.Core.Sqm;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +26,21 @@ var app = builder.Build();
 app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+// Вспомогательная функция: ищет папку карты в проекте (maps или wwwroot/maps) и в bin/Debug
+string? ResolveMapDirectory(string worldName)
+{
+    var safeWorld = Path.GetFileName(worldName.ToLowerInvariant());
+    var candidates = new[]
+    {
+        Path.Combine(builder.Environment.ContentRootPath, "maps", safeWorld),
+        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "maps", safeWorld),
+        Path.Combine(AppContext.BaseDirectory, "maps", safeWorld),
+        Path.Combine(AppContext.BaseDirectory, "wwwroot", "maps", safeWorld)
+    };
+
+    return candidates.FirstOrDefault(Directory.Exists);
+}
 
 // 1. Загрузка и разбор PBO файла
 app.MapPost("/api/mission/upload", async (IFormFile file, MissionStateService state) =>
@@ -57,16 +80,32 @@ app.MapGet("/api/mission/image", (string path, MissionStateService state) =>
 
     return Results.File(bytes, contentType);
 });
-// 4. Раздача (и опциональная докачка) тайлов топографической карты OCAP
+
+// 4. Отдача конфигурации карты map.json
+app.MapGet("/api/maps/{worldName}/map.json", (string worldName) =>
+{
+    var mapDir = ResolveMapDirectory(worldName);
+    if (mapDir != null)
+    {
+        var jsonPath = Path.Combine(mapDir, "map.json");
+        if (File.Exists(jsonPath))
+            return Results.File(jsonPath, "application/json");
+    }
+
+    return Results.NotFound(new { error = $"map.json для '{worldName}' не найден." });
+});
+
+// 5. Раздача (и опциональная докачка) тайлов топографической карты OCAP
 var httpClient = new HttpClient();
 app.MapGet("/api/maps/{worldName}/{z:int}/{x:int}/{y:int}.png", async (string worldName, int z, int x, int y) =>
 {
-    var safeWorld = worldName.ToLowerInvariant();
-    var mapsRoot = Path.Combine(AppContext.BaseDirectory, "maps", safeWorld);
+    var safeWorld = Path.GetFileName(worldName.ToLowerInvariant());
+    var mapDir = ResolveMapDirectory(safeWorld) 
+                 ?? Path.Combine(builder.Environment.ContentRootPath, "maps", safeWorld);
 
     // Проверяем оба стандарта папок OCAP: maps/world/topo/z/x/y.png и maps/world/z/x/y.png
-    var localPathTopo = Path.Combine(mapsRoot, "topo", z.ToString(), x.ToString(), $"{y}.png");
-    var localPathDirect = Path.Combine(mapsRoot, z.ToString(), x.ToString(), $"{y}.png");
+    var localPathTopo = Path.Combine(mapDir, "topo", z.ToString(), x.ToString(), $"{y}.png");
+    var localPathDirect = Path.Combine(mapDir, z.ToString(), x.ToString(), $"{y}.png");
 
     if (File.Exists(localPathTopo))
         return Results.File(localPathTopo, "image/png");
@@ -74,7 +113,7 @@ app.MapGet("/api/maps/{worldName}/{z:int}/{x:int}/{y:int}.png", async (string wo
         return Results.File(localPathDirect, "image/png");
 
     // Опционально: если указать базовый URL зеркала карт OCAP, бэкенд сам скачает и закэширует тайл на диск
-    const string? remoteOcapMirrorBaseUrl = null; // например: "https://example-ocap-server.com/images/maps"
+    const string? remoteOcapMirrorBaseUrl = null;
     if (!string.IsNullOrEmpty(remoteOcapMirrorBaseUrl))
     {
         try
@@ -87,12 +126,13 @@ app.MapGet("/api/maps/{worldName}/{z:int}/{x:int}/{y:int}.png", async (string wo
         }
         catch
         {
-            // Если тайла нет на сервере — отдаем 404, Leaflet оставит сетку
+            // Если тайла нет на сервере — отдаем 404
         }
     }
 
     return Results.NotFound();
 });
+
 app.MapFallbackToFile("index.html");
 
 // Если запустили как готовый .exe — автоматически открываем браузер

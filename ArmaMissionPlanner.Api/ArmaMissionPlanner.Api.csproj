@@ -14,4 +14,8 @@
     <ProjectReference Include="..\ArmaMissionPlanner.Core\ArmaMissionPlanner.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\maps\" />
+  </ItemGroup>
+
 </Project>

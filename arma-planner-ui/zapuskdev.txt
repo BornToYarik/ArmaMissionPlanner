@@ -1,0 +1,5 @@
+zapusk api
+dotnet run --project ArmaMissionPlanner.Api 
+dotnet run --no-restore --project ArmaMissionPlanner.Api
+zapusk front
+npm run dev
