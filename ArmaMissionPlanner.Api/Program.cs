@@ -33,10 +33,11 @@ string? ResolveMapDirectory(string worldName)
     var safeWorld = Path.GetFileName(worldName.ToLowerInvariant());
     var candidates = new[]
     {
+        // 1. Папка maps в корне солюшена (F:\projects\ArmaMissionPlanner\maps\<worldName>)
+        Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "maps", safeWorld)),
+        // 2. Запасные варианты, если вдруг запустил из скомпилированного .exe
         Path.Combine(builder.Environment.ContentRootPath, "maps", safeWorld),
-        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "maps", safeWorld),
-        Path.Combine(AppContext.BaseDirectory, "maps", safeWorld),
-        Path.Combine(AppContext.BaseDirectory, "wwwroot", "maps", safeWorld)
+        Path.Combine(AppContext.BaseDirectory, "maps", safeWorld)
     };
 
     return candidates.FirstOrDefault(Directory.Exists);

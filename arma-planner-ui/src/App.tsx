@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { toPng } from 'html-to-image';
 import {
   Upload, Users, Map as MapIcon, FileText, Shield, Truck,
-  Download, Copy, Eye, ChevronDown, ChevronRight, Plus, Trash2, Crosshair
+  Download, Copy, Eye, ChevronDown, ChevronRight, Trash2, Crosshair
 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import type {
@@ -20,34 +20,154 @@ const SWT_COLORS = [
   { name: 'Оранжевый', hex: '#f97316', swtIdx: 5 },
 ];
 
+export interface OcapMapConfig {
+  name?: string;
+  worldname?: string;
+  worldSize: number;
+  imageSize: number;
+  multiplier: number;
+  maxZoom: number;
+}
+
+// Таблица всех 19 карт WOG (точные значения worldSize в Arma 3)
+const KNOWN_MAPS: Record<string, OcapMapConfig> = {
+  altis: { worldSize: 30720, imageSize: 30720, multiplier: 1, maxZoom: 7 },
+  chernarus: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  chernarus_summer: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  chernarus_winter: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  cup_chernarus_a3: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  takistan: { worldSize: 12800, imageSize: 12800, multiplier: 1, maxZoom: 6 },
+  malden: { worldSize: 12800, imageSize: 12800, multiplier: 1, maxZoom: 6 },
+  tanoa: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  beketov: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  lythium: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  lithium: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  napf: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  rosche: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  wl_rosche: { worldSize: 15360, imageSize: 15360, multiplier: 1, maxZoom: 6 },
+  podagorsk: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  fdf_isle1_a: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  celle2: { worldSize: 12288, imageSize: 12288, multiplier: 1, maxZoom: 6 },
+  mbg_celle2: { worldSize: 12288, imageSize: 12288, multiplier: 1, maxZoom: 6 },
+  fallujah: { worldSize: 10240, imageSize: 10240, multiplier: 1, maxZoom: 6 },
+  reshmaan: { worldSize: 20480, imageSize: 20480, multiplier: 1, maxZoom: 7 },
+  vt7: { worldSize: 18000, imageSize: 18000, multiplier: 1, maxZoom: 7 },
+  brf_sumava: { worldSize: 12288, imageSize: 12288, multiplier: 1, maxZoom: 6 },
+  sumava: { worldSize: 12288, imageSize: 12288, multiplier: 1, maxZoom: 6 },
+  korsac: { worldSize: 16384, imageSize: 16384, multiplier: 1, maxZoom: 6 },
+};
+
+// Автоопределение конфига карты по имени или координатам объектов миссии
+function detectFallbackConfig(mission: MissionInfo): OcapMapConfig {
+  const rawName = (mission.worldName || '').toLowerCase().trim();
+  if (KNOWN_MAPS[rawName]) return KNOWN_MAPS[rawName];
+
+  // Ищем по вхождению (например, если остров называется cup_takistan или wog_altis)
+  for (const [key, cfg] of Object.entries(KNOWN_MAPS)) {
+    if (rawName.includes(key)) return cfg;
+  }
+
+  // Если имя острова вообще пустое — вычисляем по максимальным координатам юнитов и маркеров
+  let maxCoord = 0;
+  mission.groups.forEach(g =>
+      g.units.forEach(u => {
+        if (u.position.length >= 3) {
+          maxCoord = Math.max(maxCoord, u.position[0], u.position[2]);
+        }
+      })
+  );
+  mission.markers.forEach(m => {
+    if (m.position.length >= 3) {
+      maxCoord = Math.max(maxCoord, m.position[0], m.position[2]);
+    }
+  });
+
+  if (maxCoord > 20480) return KNOWN_MAPS.altis; // 30720
+  if (maxCoord > 15360) return KNOWN_MAPS.beketov; // 20480
+  if (maxCoord > 12800) return KNOWN_MAPS.chernarus; // 15360
+  return KNOWN_MAPS.takistan; // 12800
+}
+
+// Вычисляет 4 вершины прямоугольника [lat(Y), lng(X)] с учетом угла поворота из Arma 3 (по часовой стрелке)
+function getRotatedRectLatLngs(
+    centerX: number,
+    centerY: number,
+    widthA: number,
+    heightB: number,
+    angleDeg: number = 0
+): [number, number][] {
+  const rad = (-angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  const corners = [
+    [-widthA, -heightB],
+    [widthA, -heightB],
+    [widthA, heightB],
+    [-widthA, heightB],
+  ];
+
+  return corners.map(([dx, dy]) => {
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+    return [centerY + ry, centerX + rx];
+  });
+}
+
+// Вычисляет точки повернутого эллипса (полигон из 36 вершин)
+function getRotatedEllipseLatLngs(
+    centerX: number,
+    centerY: number,
+    widthA: number,
+    heightB: number,
+    angleDeg: number = 0
+): [number, number][] {
+  const rad = (-angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const pts: [number, number][] = [];
+
+  for (let i = 0; i < 36; i++) {
+    const theta = (i * 2 * Math.PI) / 36;
+    const dx = widthA * Math.cos(theta);
+    const dy = heightB * Math.sin(theta);
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+    pts.push([centerY + ry, centerX + rx]);
+  }
+  return pts;
+}
+
 export default function App() {
   const [mission, setMission] = useState<MissionInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'booking' | 'map' | 'briefing'>('booking');
   const [selectedSide, setSelectedSide] = useState<string>('');
 
-  // Бронирование: ключ = ID юнита, значение = тег отряда (например "COB", "UN")
   const [unitAssignments, setUnitAssignments] = useState<Record<number, string>>({});
-  // Раскрытые отделения в таблице (для деления отделения между отрядами и просмотра юнитов)
   const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
 
-  // Модалки инспектора юнита и техники
   const [inspectedUnit, setInspectedUnit] = useState<SquadUnit | null>(null);
   const [inspectedVehicle, setInspectedVehicle] = useState<MissionVehicle | null>(null);
 
-  // Тактические маркеры КС-а (SWT)
   const [planMarkers, setPlanMarkers] = useState<TacticalPlanMarker[]>([]);
   const [newMarkerText, setNewMarkerText] = useState('Атака 1-1');
   const [newMarkerColorIdx, setNewMarkerColorIdx] = useState(1);
   const [swtArrayText, setSwtArrayText] = useState('');
-  const [worldSize, setWorldSize] = useState<number>(15360); // 15360 — стандарт Черноруссии
+
+  // Конфиг карты и режим привязки тайлов GDAL2Tiles / OCAP
+  const [mapConfig, setMapConfig] = useState<OcapMapConfig>(KNOWN_MAPS.altis);
+  // 'worldSize' — верх тайла = worldSize (стандарт openlayers.html с origin [0,0])
+  // 'fullTile'  — низ тайла (256px) = 0 (верх = 256 * scale, например 32768 для Алтиса)
+  // 'tms'       — инверсия оси Y тайлов (TMS стандарт GDAL2Tiles)
+  const [tileAlignMode, setTileAlignMode] = useState<'worldSize' | 'fullTile' | 'tms'>('worldSize');
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   const bookingTableRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const planLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
-  // Подгружаем текущую миссию при старте (если страница была обновлена по F5)
   useEffect(() => {
     fetch('/api/mission/current')
         .then(r => (r.ok ? r.json() : null))
@@ -63,9 +183,36 @@ export default function App() {
     if (sides.length > 0) setSelectedSide(sides[0]);
     setUnitAssignments({});
     setExpandedGroups({});
+
+    // Сразу синхронно ставим конфиг карты по имени острова или координатам!
+    const fallbackCfg = detectFallbackConfig(data);
+    setMapConfig(fallbackCfg);
   };
 
-  // Загрузка PBO файла
+  // Дополнительно пробуем подтянуть точный map.json с бэкенда
+  useEffect(() => {
+    if (!mission) return;
+    const fallbackCfg = detectFallbackConfig(mission);
+    setMapConfig(fallbackCfg);
+
+    const worldKey = (mission.worldName || 'altis').toLowerCase().trim();
+    fetch(`/api/maps/${worldKey}/map.json`)
+        .then(r => (r.ok ? r.json() : null))
+        .then((cfg: OcapMapConfig | null) => {
+          if (cfg && cfg.worldSize) {
+            setMapConfig({
+              worldSize: Number(cfg.worldSize),
+              imageSize: Number(cfg.imageSize || cfg.worldSize),
+              multiplier: Number(cfg.multiplier || 1),
+              maxZoom: Number(cfg.maxZoom ?? 7),
+              name: cfg.name,
+              worldname: cfg.worldname || worldKey,
+            });
+          }
+        })
+        .catch(() => {});
+  }, [mission]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,13 +236,11 @@ export default function App() {
     }
   };
 
-  // Отделения выбранной стороны
   const sideGroups = useMemo(() => {
     if (!mission) return [];
     return mission.groups.filter(g => g.side === selectedSide);
   }, [mission, selectedSide]);
 
-  // Назначить отряд всему отделению целиком
   const assignSquadWholeGroup = (groupId: number, clanTag: string) => {
     const group = sideGroups.find(g => g.id === groupId);
     if (!group) return;
@@ -108,7 +253,6 @@ export default function App() {
     });
   };
 
-  // Назначить отряд конкретному слоту внутри отделения (деление отделения)
   const assignSingleUnit = (unitId: number, clanTag: string) => {
     setUnitAssignments(prev => ({
       ...prev,
@@ -116,7 +260,6 @@ export default function App() {
     }));
   };
 
-  // Подсчет сводной статистики по отрядам (учитывая поделенные отделения)
   const clanStats = useMemo(() => {
     const counts: Record<string, { total: number; details: Record<string, number> }> = {};
     let totalSideSlots = 0;
@@ -143,7 +286,6 @@ export default function App() {
     };
   }, [sideGroups, unitAssignments]);
 
-  // Экспорт таблицы расстановки в PNG
   const exportTableToPng = async () => {
     if (!bookingTableRef.current) return;
     try {
@@ -160,7 +302,6 @@ export default function App() {
     }
   };
 
-  // Копирование расстановки в текстовом виде (для Discord / Форума)
   const copyBookingAsText = () => {
     const lines: string[] = [`**${mission?.name} (${selectedSide})**`, ''];
     sideGroups.forEach(g => {
@@ -178,9 +319,7 @@ export default function App() {
     alert('Таблица скопирована в буфер обмена для Discord!');
   };
 
-  // Генерация массива SWT Markers для вставки в Арме
   const exportSwtArray = () => {
-    // Формат SWT: [["Текст",[X,Y,0],TypeIdx,ColorIdx,Dir,[SizeA,SizeB]], ...]
     const swtItems = planMarkers.map(m => {
       const safeText = m.text.replace(/"/g, '""');
       return `["${safeText}",[${Math.round(m.x)},${Math.round(m.y)},0],${m.swtTypeIndex},${m.swtColorIndex},0,[1,1]]`;
@@ -190,7 +329,6 @@ export default function App() {
     navigator.clipboard.writeText(result);
   };
 
-  // Импорт массива SWT Markers из строки
   const importSwtArray = () => {
     if (!swtArrayText.trim()) return;
     try {
@@ -220,29 +358,6 @@ export default function App() {
     }
   };
 
-  // Автоматически подгружаем map.json острова при загрузке миссии (чтобы выставить правильный worldSize)
-  const [mapConfig, setMapConfig] = useState<{
-    worldSize: number;
-    imageSize: number;
-    multiplier: number;
-    maxZoom: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!mission?.worldName) return;
-    fetch(`/api/maps/${mission.worldName.toLowerCase()}/map.json`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(cfg => {
-          if (cfg && cfg.worldSize) {
-            setMapConfig(cfg);
-            setWorldSize(cfg.worldSize);
-          } else {
-            setMapConfig(null);
-          }
-        })
-        .catch(() => setMapConfig(null));
-  }, [mission?.worldName]);
-
   // Инициализация и отрисовка тактической карты Leaflet
   useEffect(() => {
     if (activeTab !== 'map' || !mission || !mapContainerRef.current) return;
@@ -252,74 +367,140 @@ export default function App() {
       leafletMapRef.current = null;
     }
 
-    const maxZoom = mapConfig?.maxZoom ?? 7;
-    const multiplier = mapConfig?.multiplier ?? 1;
-    // На зуме 0 один пиксель тайла равен scale игровых метров (для Altis = 128)
-    const scale = Math.pow(2, maxZoom) / multiplier;
+    const currentWorldSize = mapConfig.worldSize;
+    const maxZoom = mapConfig.maxZoom;
+    const multiplier = mapConfig.multiplier || 1;
 
-    // Кастомная CRS: оставляет твои координаты [y, x] в метрах Армы (0..worldSize),
-    // но масштабирует тайлы GDAL2Tiles ровно под размер острова!
+    // Сколько игровых метров в 1 пикселе на зуме 0 (для Altis: 2^7 / 1 = 128 м/пикс)
+    const scale = Math.pow(2, maxZoom) / multiplier;
+    const factor = 1 / scale;
+
+    // Выбираем точку отсчета Y для тайлов:
+    // В 'worldSize' (по openlayers.html origin=[0,0]): пиксель Y=0 тайла — это Y = currentWorldSize метров Армы (240px на зуме 0)
+    // В 'fullTile' (если GDAL2Tiles выровнял Y=0 Армы по нижнему краю тайла 256px): пиксель Y=0 тайла — это 256 * scale (32768 м)
+    const offsetY = tileAlignMode === 'fullTile' ? 256 : currentWorldSize * factor;
+
     const armaCrs = L.extend({}, L.CRS.Simple, {
-      transformation: new L.Transformation(1 / scale, 0, -1 / scale, worldSize / scale),
+      transformation: new L.Transformation(factor, 0, -factor, offsetY),
     });
 
     const map = L.map(mapContainerRef.current, {
       crs: armaCrs,
       minZoom: 0,
-      maxZoom: maxZoom,
+      maxZoom: maxZoom + 2,
+      zoomSnap: 0.5,
     });
     leafletMapRef.current = map;
 
     const bounds: L.LatLngBoundsExpression = [
       [0, 0],
-      [worldSize, worldSize],
+      [currentWorldSize, currentWorldSize],
     ];
 
-    // Подложка координатной сетки Армы (по 1 км)
-    const gridGroup = L.layerGroup().addTo(map);
-    L.rectangle(bounds).addTo(gridGroup);
-
-    // Слой топографической карты из папки maps/<worldName>/{z}/{x}/{y}.png
-    const worldKey = mission.worldName.toLowerCase();
+    // 1. Слой топографической карты OCAP
+    const worldKey = (mission.worldName || 'altis').toLowerCase().trim();
     L.tileLayer(`/api/maps/${worldKey}/{z}/{x}/{y}.png`, {
       minZoom: 0,
-      maxZoom: maxZoom,
+      maxZoom: maxZoom + 2,
+      maxNativeZoom: maxZoom,
       tileSize: 256,
       noWrap: true,
-      bounds: bounds,
+      tms: tileAlignMode === 'tms',
     }).addTo(map);
 
-    // Сетка 1х1 км поверх карты (полупрозрачная)
-    for (let i = 0; i <= worldSize; i += 1000) {
-      L.polyline([[0, i], [worldSize, i]], { color: 'rgba(30, 41, 59, 0.35)', weight: 1 }).addTo(gridGroup);
-      L.polyline([[i, 0], [i, worldSize]], { color: 'rgba(30, 41, 59, 0.35)', weight: 1 }).addTo(gridGroup);
+    // 2. Прозрачная сетка 1 км + 100 м при приближении (строго от 0 до currentWorldSize)
+    const grid1kmGroup = L.layerGroup().addTo(map);
+    const grid100mGroup = L.layerGroup();
+
+    L.rectangle(bounds, {
+      color: '#475569',
+      weight: 1.5,
+      fill: false,
+      interactive: false,
+    }).addTo(grid1kmGroup);
+
+    for (let i = 0; i <= currentWorldSize; i += 1000) {
+      L.polyline([[0, i], [currentWorldSize, i]], {
+        color: 'rgba(0, 0, 0, 0.28)',
+        weight: 1,
+        interactive: false,
+      }).addTo(grid1kmGroup);
+
+      L.polyline([[i, 0], [i, currentWorldSize]], {
+        color: 'rgba(0, 0, 0, 0.28)',
+        weight: 1,
+        interactive: false,
+      }).addTo(grid1kmGroup);
     }
+
+    const updateFineGrid = () => {
+      grid100mGroup.clearLayers();
+      if (map.getZoom() < 5) {
+        if (map.hasLayer(grid100mGroup)) map.removeLayer(grid100mGroup);
+        return;
+      }
+      if (!map.hasLayer(grid100mGroup)) grid100mGroup.addTo(map);
+
+      const viewBounds = map.getBounds();
+      const startX = Math.max(0, Math.floor(viewBounds.getWest() / 100) * 100);
+      const endX = Math.min(currentWorldSize, Math.ceil(viewBounds.getEast() / 100) * 100);
+      const startY = Math.max(0, Math.floor(viewBounds.getSouth() / 100) * 100);
+      const endY = Math.min(currentWorldSize, Math.ceil(viewBounds.getNorth() / 100) * 100);
+
+      for (let x = startX; x <= endX; x += 100) {
+        if (x % 1000 === 0) continue;
+        L.polyline([[startY, x], [endY, x]], {
+          color: 'rgba(0, 0, 0, 0.15)',
+          weight: 0.8,
+          interactive: false,
+        }).addTo(grid100mGroup);
+      }
+      for (let y = startY; y <= endY; y += 100) {
+        if (y % 1000 === 0) continue;
+        L.polyline([[y, startX], [y, endX]], {
+          color: 'rgba(0, 0, 0, 0.15)',
+          weight: 0.8,
+          interactive: false,
+        }).addTo(grid100mGroup);
+      }
+    };
+
+    map.on('zoomend moveend', updateFineGrid);
+    map.on('mousemove', (e: L.LeafletMouseEvent) => {
+      setCursorPos({ x: Math.round(e.latlng.lng), y: Math.round(e.latlng.lat) });
+    });
 
     map.fitBounds(bounds);
 
-    // 1. Отрисовка маркеров из самой миссии (зоны, задачи)
+    // 3. Отрисовка маркеров из самой миссии (с поддержкой угла поворота angle!)
     mission.markers.forEach(m => {
       if (m.position.length < 3) return;
       const x = m.position[0];
       const y = m.position[2];
+      const angle = Number((m as any).angle ?? (m as any).Angle ?? (m as any).dir ?? 0);
 
-      if (m.markerType === 'RECTANGLE' || m.markerType === 'ELLIPSE') {
-        L.rectangle(
-            [[y - m.heightB, x - m.widthA], [y + m.heightB, x + m.widthA]],
-            { color: '#ef4444', weight: 2, fillOpacity: 0.2 }
-        )
+      if (m.markerType === 'RECTANGLE') {
+        const corners = getRotatedRectLatLngs(x, y, m.widthA, m.heightB, angle);
+        L.polygon(corners, { color: '#ef4444', weight: 2, fillOpacity: 0.2 })
+            .bindTooltip(m.text || m.name)
+            .addTo(map);
+      } else if (m.markerType === 'ELLIPSE') {
+        const pts = getRotatedEllipseLatLngs(x, y, m.widthA, m.heightB, angle);
+        L.polygon(pts, { color: '#ef4444', weight: 2, fillOpacity: 0.2 })
             .bindTooltip(m.text || m.name)
             .addTo(map);
       } else if (m.text) {
         const icon = L.divIcon({
-          className: 'custom-mission-marker',
-          html: `<div style="color:#cbd5e1;font-size:11px;font-weight:bold;text-shadow:1px 1px 2px #000;white-space:nowrap;">• ${m.text}</div>`,
+          className: '',
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+          html: `<div style="transform:translate(-50%, -50%) rotate(${angle}deg);color:#0f172a;background:rgba(255,255,255,0.75);padding:1px 4px;border-radius:3px;font-size:11px;font-weight:bold;white-space:nowrap;border:1px solid rgba(0,0,0,0.3);">• ${m.text}</div>`,
         });
         L.marker([y, x], { icon }).addTo(map);
       }
     });
 
-    // 2. Отрисовка стартовых позиций отделений (по позиции КО)
+    // 4. Отрисовка стартовых позиций отделений
     mission.groups.forEach(g => {
       const leader = g.units[0];
       if (!leader || leader.position.length < 3) return;
@@ -329,8 +510,10 @@ export default function App() {
           g.side === 'West' ? '#3b82f6' : g.side === 'East' ? '#ef4444' : '#22c55e';
 
       const icon = L.divIcon({
-        className: 'squad-marker',
-        html: `<div style="background:${sideColor};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;border:1px solid #fff;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.6);">
+        className: '',
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        html: `<div style="transform:translate(-50%, -50%);background:${sideColor};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;border:1px solid #fff;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.6);">
           ${g.callSign} (${g.units.length})
         </div>`,
       });
@@ -339,31 +522,31 @@ export default function App() {
           .addTo(map);
     });
 
-    // 3. Отрисовка техники и ящиков (с открытием инвентаря по клику)
+    // 5. Отрисовка техники и ящиков
     mission.vehicles.forEach(v => {
       if (v.position.length < 3) return;
       const x = v.position[0];
       const y = v.position[2];
 
       const marker = L.circleMarker([y, x], {
-        radius: 6,
+        radius: 5,
         fillColor: v.cargo.hasAnyCargo ? '#f59e0b' : '#94a3b8',
         color: '#0f172a',
-        weight: 2,
+        weight: 1.5,
         fillOpacity: 0.95,
       }).addTo(map);
 
       marker.bindTooltip(`${v.vehicleClass}${v.cargo.hasAnyCargo ? ' (Есть БК/Груз)' : ''}`);
-      marker.on('click', () => {
+      marker.on('click', e => {
+        L.DomEvent.stopPropagation(e);
         setInspectedVehicle(v);
       });
     });
 
-    // 4. Слой пользовательских меток плана КС-а
+    // 6. Слой пользовательских меток плана КС-а
     const planLayer = L.layerGroup().addTo(map);
     planLayerGroupRef.current = planLayer;
 
-    // Клик по карте ставит новую тактическую метку
     map.on('click', (e: L.LeafletMouseEvent) => {
       const colorObj = SWT_COLORS[newMarkerColorIdx] || SWT_COLORS[1];
       setPlanMarkers(prev => [
@@ -384,9 +567,8 @@ export default function App() {
       map.remove();
       leafletMapRef.current = null;
     };
-  }, [activeTab, mission, worldSize, mapConfig]);
+  }, [activeTab, mission, mapConfig, tileAlignMode]);
 
-  // Обновление слоя меток КС-а при добавлении/удалении
   useEffect(() => {
     const layer = planLayerGroupRef.current;
     if (!layer) return;
@@ -395,7 +577,9 @@ export default function App() {
     planMarkers.forEach(m => {
       const icon = L.divIcon({
         className: 'plan-marker',
-        html: `<div style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        html: `<div style="transform:translate(0, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;">
           <span style="width:10px;height:10px;border-radius:50%;background:${m.color};border:2px solid #fff;display:inline-block;"></span>
           <span style="color:${m.color};background:rgba(15,23,42,0.85);padding:1px 5px;border-radius:3px;font-weight:bold;font-size:12px;border:1px solid ${m.color};">${m.text}</span>
         </div>`,
@@ -404,7 +588,6 @@ export default function App() {
     });
   }, [planMarkers, activeTab]);
 
-  // Получить отображаемую сводку отрядов для заголовка отделения
   const getGroupAssignedSummary = (groupId: number) => {
     const group = sideGroups.find(g => g.id === groupId);
     if (!group) return '';
@@ -426,7 +609,7 @@ export default function App() {
               </h1>
               <p className="text-xs text-slate-400">
                 {mission
-                    ? `Остров: ${mission.worldName} | Автор: ${mission.author} | ${mission.overview}`
+                    ? `Остров: ${mission.worldName} (${mapConfig.worldSize}м) | Автор: ${mission.author} | ${mission.overview}`
                     : 'Загрузите .pbo файл миссии для начала планирования'}
               </p>
             </div>
@@ -492,7 +675,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Переключатель стороны */}
               <div className="flex items-center gap-2 py-2">
                 <span className="text-xs text-slate-400">Сторона:</span>
                 {Array.from(new Set(mission.groups.map(g => g.side))).map(side => (
@@ -553,9 +735,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Область, которая рендерится в PNG */}
                       <div ref={bookingTableRef} className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-4 rounded-xl bg-slate-950">
-                        {/* Левая колонка: Список отделений */}
                         <div className="lg:col-span-2 space-y-2.5">
                           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">
                             Отделения стороны {selectedSide} ({mission.name})
@@ -591,7 +771,6 @@ export default function App() {
                                       </div>
                                     </div>
 
-                                    {/* Быстрое назначение отряда на всё отделение */}
                                     <div className="flex items-center gap-2">
                                       {groupSummary.includes('/') && (
                                           <span className="text-xs text-amber-400 font-medium">
@@ -608,7 +787,6 @@ export default function App() {
                                     </div>
                                   </div>
 
-                                  {/* Раскрытый список юнитов отделения */}
                                   {isExpanded && (
                                       <div className="border-t border-slate-800 bg-slate-950/50 divide-y divide-slate-800/60">
                                         {group.units.map((u, idx) => (
@@ -656,7 +834,6 @@ export default function App() {
                           })}
                         </div>
 
-                        {/* Правая колонка: Сводная статистика по отрядам */}
                         <div className="border border-slate-800 rounded-lg bg-slate-900/60 p-4 h-fit space-y-4">
                           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
                             Статистика бронирования
@@ -706,29 +883,55 @@ export default function App() {
                 {/* ВКЛАДКА 2: ТАКТИЧЕСКАЯ КАРТА, ТЕХНИКА И SWT MARKERS */}
                 {activeTab === 'map' && (
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                      {/* Карта */}
                       <div className="lg:col-span-3 space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400">
-                          <span>Клик по карте — поставить тактическую метку. Клик по кружку техники — открыть инвентарь кузова/ящика.</span>
-                          <div className="flex items-center gap-2">
-                            <span>Размер карты (м):</span>
-                            <input
-                                type="number"
-                                value={worldSize}
-                                onChange={e => setWorldSize(Number(e.target.value) || 15360)}
-                                className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 w-24 text-slate-200"
-                            />
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                    <span>
+                      Остров: <b className="text-slate-200">{mission.worldName}</b> ({mapConfig.worldSize} м, maxZoom: {mapConfig.maxZoom})
+                      {cursorPos && (
+                          <span className="ml-3 font-mono text-emerald-400">
+                          [X: {cursorPos.x}, Y: {cursorPos.y}]
+                        </span>
+                      )}
+                    </span>
+
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1">
+                              <span>Привязка тайлов:</span>
+                              <select
+                                  value={tileAlignMode}
+                                  onChange={e => setTileAlignMode(e.target.value as any)}
+                                  className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-slate-200"
+                              >
+                                <option value="worldSize">По верху (worldSize = {mapConfig.worldSize})</option>
+                                <option value="fullTile">По низу 256px (32768 / 16384)</option>
+                                <option value="tms">TMS (Инверсия Y)</option>
+                              </select>
+                            </label>
+
+                            <label className="flex items-center gap-1">
+                              <span>Размер (м):</span>
+                              <input
+                                  type="number"
+                                  value={mapConfig.worldSize}
+                                  onChange={e => {
+                                    const val = Number(e.target.value) || 15360;
+                                    setMapConfig(prev => ({ ...prev, worldSize: val, imageSize: val }));
+                                  }}
+                                  className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 w-20 text-slate-200"
+                              />
+                            </label>
                           </div>
                         </div>
+
+                        {/* relative z-0 изолирует слои Leaflet, чтобы они не перекрывали модалки инвентаря! */}
                         <div
                             ref={mapContainerRef}
-                            className="w-full h-[680px] rounded-xl border border-slate-800 overflow-hidden"
+                            className="relative z-0 w-full h-[680px] rounded-xl border border-slate-800 overflow-hidden"
                         />
                       </div>
 
                       {/* Боковая панель: SWT Маркеры и Список Техники */}
                       <div className="space-y-4">
-                        {/* Панель SWT Markers */}
                         <div className="border border-slate-800 rounded-xl bg-slate-900/60 p-4 space-y-3">
                           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
                             Метки плана (SWT Markers)
@@ -798,7 +1001,6 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Список техники и ящиков со снаряжением */}
                         <div className="border border-slate-800 rounded-xl bg-slate-900/60 p-4 space-y-3">
                           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
                             <Truck className="w-4 h-4 text-amber-400" />
@@ -845,7 +1047,6 @@ export default function App() {
                         ))}
                       </div>
 
-                      {/* Картинки форм сторон из PBO */}
                       <div className="space-y-4">
                         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                           <Shield className="w-4 h-4 text-emerald-400" />
@@ -872,7 +1073,7 @@ export default function App() {
         {inspectedUnit && (
             <div
                 onClick={() => setInspectedUnit(null)}
-                className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
+                className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[2000]"
             >
               <div
                   onClick={e => e.stopPropagation()}
@@ -930,7 +1131,7 @@ export default function App() {
         {inspectedVehicle && (
             <div
                 onClick={() => setInspectedVehicle(null)}
-                className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
+                className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[2000]"
             >
               <div
                   onClick={e => e.stopPropagation()}

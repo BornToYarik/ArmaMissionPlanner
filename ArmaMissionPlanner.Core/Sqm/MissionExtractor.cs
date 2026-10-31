@@ -181,7 +181,13 @@ public static class MissionExtractor
 
         return veh;
     }
-
+    private static float ReadFloatSafe(SqmClass item, string propName, float defaultValue = 0f)
+    {
+        var prop = item.GetProperty(propName);
+        if (prop?.Value == null) return defaultValue;
+        try { return Convert.ToSingle(prop.Value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return defaultValue; }
+    }
     private static MissionMarker? ExtractMarker(SqmClass item)
     {
         var (pos, dir) = ReadPositionAndDirection(item);
@@ -194,9 +200,9 @@ public static class MissionExtractor
             IconType = item.GetProperty("type")?.AsString() ?? string.Empty,
             ColorName = item.GetProperty("colorName")?.AsString() ?? "Default",
             BrushName = item.GetProperty("fillName")?.AsString() ?? "Solid",
-            WidthA = item.GetProperty("a")?.AsFloat() ?? 1f,
-            HeightB = item.GetProperty("b")?.AsFloat() ?? 1f,
-            Angle = item.GetProperty("angle")?.AsFloat() ?? dir,
+            WidthA = ReadFloatSafe(item, "a", 1f),
+            HeightB = ReadFloatSafe(item, "b", 1f),
+            Angle = ReadFloatSafe(item, "angle", dir),
             Alpha = item.GetProperty("alpha")?.AsFloat() ?? 1f,
             Position = pos
         };
