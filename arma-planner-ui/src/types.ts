@@ -9,6 +9,14 @@ export interface MissionInfo {
     groups: SquadGroup[];
     vehicles: MissionVehicle[];
     markers: MissionMarker[];
+    validationReport?: ValidationIssue[];
+}
+export interface ValidationIssue {
+    ruleNumber: string;
+    category: string;
+    severity: 'Ok' | 'Warning' | 'Error';
+    title: string;
+    details: string;
 }
 
 export interface WmtConfig {

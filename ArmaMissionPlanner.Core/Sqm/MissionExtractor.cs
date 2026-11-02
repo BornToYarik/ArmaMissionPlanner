@@ -59,6 +59,7 @@ public static class MissionExtractor
             SqfParser.ExtractBriefing(mission, archive);
         }
         AssignDefaultCallSigns(mission.Groups);
+        mission.ValidationReport = MissionValidator.Validate(root, mission, archive, pboFileName, isBinarized: true);
         return mission;
     }
 

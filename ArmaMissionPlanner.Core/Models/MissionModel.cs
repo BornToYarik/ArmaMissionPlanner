@@ -6,6 +6,7 @@ public class MissionInfo
     public string Author { get; set; } = string.Empty;
     public string Overview { get; set; } = string.Empty;
     public string WorldName { get; set; } = string.Empty;
+    public List<ValidationIssue> ValidationReport { get; set; } = new();
 
     public WmtConfig WmtSettings { get; set; } = new();
     public List<BriefingSection> Briefing { get; set; } = new();
@@ -124,4 +125,12 @@ public class MissionMarker
     public float Angle { get; set; }
     public float Alpha { get; set; } = 1f;
     public float[] Position { get; set; } = Array.Empty<float>(); // [X, Z, Y]
+}
+public class ValidationIssue
+{
+    public string RuleNumber { get; set; } = string.Empty; // Напр. "П. 1", "П. 5.2", "П. 7 (WMT_Main)"
+    public string Category { get; set; } = string.Empty;   // "1. Файл и Настройки", "5. Техника и Снаряжение" и т.д.
+    public string Severity { get; set; } = "Error";        // "Ok", "Warning", "Error"
+    public string Title { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
 }

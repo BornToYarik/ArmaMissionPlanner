@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import { toPng } from 'html-to-image';
-import {
-  Upload, Users, Map as MapIcon, FileText, Shield, Truck,
-  Download, Copy, Eye, ChevronDown, ChevronRight, Trash2, Crosshair
-} from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import type {
   MissionInfo, SquadUnit, MissionVehicle
 } from './types';
-
+import {
+  Upload, Users, Map as MapIcon, FileText, Shield, Truck,
+  Download, Copy, Eye, ChevronDown, ChevronRight, Trash2, Crosshair,
+  CheckCircle2, AlertTriangle, XCircle
+} from 'lucide-react';
 // Компонент умной загрузки PNG-иконки класса из твоей выгрузки (с тихим скрытием, если иконки нет)
 const ClassIcon: React.FC<{ classNameStr?: string; size?: string }> = ({
                                                                          classNameStr,
@@ -493,7 +493,8 @@ function renderMarkerHtml(
 export default function App() {
   const [mission, setMission] = useState<MissionInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'booking' | 'map' | 'briefing'>('booking');
+  const [activeTab, setActiveTab] = useState<'booking' | 'map' | 'briefing' | 'validation'>('booking');
+  const [validationFilter, setValidationFilter] = useState<'ALL' | 'Error' | 'Warning' | 'Ok'>('ALL');
   const [selectedSide, setSelectedSide] = useState<string>('');
 
   // Словарь русских названий предметов и техники из твоего arma_assets_dump_fixed.json
@@ -1576,6 +1577,31 @@ export default function App() {
                   <FileText className="w-4 h-4" />
                   Брифинг и Формы сторон ({mission.briefingImages.length})
                 </button>
+                <button
+                    onClick={() => setActiveTab('validation')}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition ${
+                        activeTab === 'validation'
+                            ? 'border-emerald-500 text-emerald-400'
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Валидатор WOG</span>
+                  {mission.validationReport && (
+                      <span className="flex items-center gap-1 ml-1">
+                  {mission.validationReport.filter(x => x.severity === 'Error').length > 0 && (
+                      <span className="bg-rose-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded">
+                      {mission.validationReport.filter(x => x.severity === 'Error').length} ош.
+                    </span>
+                  )}
+                        {mission.validationReport.filter(x => x.severity === 'Warning').length > 0 && (
+                            <span className="bg-amber-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded">
+                      {mission.validationReport.filter(x => x.severity === 'Warning').length} пред.
+                    </span>
+                        )}
+                </span>
+                  )}
+                </button>
               </div>
 
               <div className="flex items-center gap-2 py-2">
@@ -2122,6 +2148,120 @@ export default function App() {
                               />
                             </div>
                         ))}
+                      </div>
+                    </div>
+                )}
+                {/* ВКЛАДКА 4: АВТОМАТИЧЕСКИЙ ВАЛИДАТОР ПРАВИЛ WOG */}
+                {activeTab === 'validation' && mission.validationReport && (
+                    <div className="max-w-5xl mx-auto space-y-5">
+                      {/* Карточки сводки */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <button
+                            onClick={() => setValidationFilter('ALL')}
+                            className={`p-3.5 rounded-xl border text-left transition ${
+                                validationFilter === 'ALL'
+                                    ? 'bg-slate-800 border-slate-600'
+                                    : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+                            }`}
+                        >
+                          <div className="text-xl font-bold text-slate-100">{mission.validationReport.length}</div>
+                          <div className="text-xs text-slate-400">Всего проверок</div>
+                        </button>
+
+                        <button
+                            onClick={() => setValidationFilter('Error')}
+                            className={`p-3.5 rounded-xl border text-left transition ${
+                                validationFilter === 'Error'
+                                    ? 'bg-rose-950/60 border-rose-500'
+                                    : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+                            }`}
+                        >
+                          <div className="text-xl font-bold text-rose-400">
+                            {mission.validationReport.filter(x => x.severity === 'Error').length}
+                          </div>
+                          <div className="text-xs text-rose-300/80">Ошибок (Error)</div>
+                        </button>
+
+                        <button
+                            onClick={() => setValidationFilter('Warning')}
+                            className={`p-3.5 rounded-xl border text-left transition ${
+                                validationFilter === 'Warning'
+                                    ? 'bg-amber-950/60 border-amber-500'
+                                    : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+                            }`}
+                        >
+                          <div className="text-xl font-bold text-amber-400">
+                            {mission.validationReport.filter(x => x.severity === 'Warning').length}
+                          </div>
+                          <div className="text-xs text-amber-300/80">Предупреждений (Warning)</div>
+                        </button>
+
+                        <button
+                            onClick={() => setValidationFilter('Ok')}
+                            className={`p-3.5 rounded-xl border text-left transition ${
+                                validationFilter === 'Ok'
+                                    ? 'bg-emerald-950/60 border-emerald-500'
+                                    : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900'
+                            }`}
+                        >
+                          <div className="text-xl font-bold text-emerald-400">
+                            {mission.validationReport.filter(x => x.severity === 'Ok').length}
+                          </div>
+                          <div className="text-xs text-emerald-300/80">Пройдено успешно (OK)</div>
+                        </button>
+                      </div>
+
+                      {/* Список проверок, сгруппированный по разделам правил */}
+                      <div className="space-y-4">
+                        {Array.from(new Set(mission.validationReport.map(i => i.category))).map(category => {
+                          const items = mission.validationReport!.filter(
+                              i => i.category === category && (validationFilter === 'ALL' || i.severity === validationFilter)
+                          );
+                          if (items.length === 0) return null;
+
+                          return (
+                              <div key={category} className="border border-slate-800 rounded-xl bg-slate-900/60 overflow-hidden">
+                                <div className="bg-slate-900 px-4 py-2.5 border-b border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-300">
+                                  {category}
+                                </div>
+                                <div className="divide-y divide-slate-800/70">
+                                  {items.map((item, idx) => (
+                                      <div key={idx} className="p-3.5 flex items-start gap-3 text-xs">
+                                        {item.severity === 'Error' && (
+                                            <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                                        )}
+                                        {item.severity === 'Warning' && (
+                                            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                                        )}
+                                        {item.severity === 'Ok' && (
+                                            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                                        )}
+
+                                        <div className="space-y-1 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                                    {item.ruleNumber}
+                                  </span>
+                                            <span
+                                                className={`font-bold text-sm ${
+                                                    item.severity === 'Error'
+                                                        ? 'text-rose-400'
+                                                        : item.severity === 'Warning'
+                                                            ? 'text-amber-300'
+                                                            : 'text-emerald-300'
+                                                }`}
+                                            >
+                                    {item.title}
+                                  </span>
+                                          </div>
+                                          <p className="text-slate-400 leading-relaxed">{item.details}</p>
+                                        </div>
+                                      </div>
+                                  ))}
+                                </div>
+                              </div>
+                          );
+                        })}
                       </div>
                     </div>
                 )}
