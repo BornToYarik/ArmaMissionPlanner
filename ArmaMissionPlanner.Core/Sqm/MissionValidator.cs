@@ -11,7 +11,6 @@ namespace ArmaMissionPlanner.Core.Sqm;
 
 public static class MissionValidator
 {
-    // Автоматические системные файлы Армы, которые движок вызывает сам (не считаются "неиспользуемыми")
     private static readonly HashSet<string> EngineEntryFiles = new(StringComparer.OrdinalIgnoreCase)
     {
         "mission.sqm",
@@ -27,7 +26,6 @@ public static class MissionValidator
         "briefing.sqf"
     };
 
-    // Запрещенное ванильное оружие/броня/фургоны из п. 5.6 и 5.8 правил WOG
     private static readonly string[] ForbiddenVanillaPrefixes =
     {
         "arifle_MX", "arifle_Katiba", "arifle_TRG2", "arifle_Mk20", "arifle_SDAR",
@@ -52,58 +50,28 @@ public static class MissionValidator
         var issues = new List<ValidationIssue>();
         int totalPlayableSlots = mission.Groups.Sum(g => g.Units.Count);
 
-        // =========================================================================
-        // 1. НАЗВАНИЕ ФАЙЛА (Раздел 1 правил)
-        // =========================================================================
         ValidateFileName(pboFileName, totalPlayableSlots, issues);
-
-        // =========================================================================
-        // 2. ОБЩИЕ НАСТРОЙКИ, БИНАРИЗАЦИЯ, ПОГОДА И ЛОББИ (Раздел 2 правил)
-        // =========================================================================
         ValidateGeneralAndIntel(root, mission, archive, totalPlayableSlots, isBinarized, issues);
-
-        // =========================================================================
-        // 3. БРИФИНГ И КАРТИНКИ ФОРМ (Раздел 3 правил)
-        // =========================================================================
         ValidateBriefing(mission, issues);
-
-        // =========================================================================
-        // 4. СЛОТЫ, ШТАБ, МЕДИКИ И ИНЖЕНЕРЫ (Раздел 4 правил)
-        // =========================================================================
         ValidateSlotsAndRoles(mission, totalPlayableSlots, issues);
-
-        // =========================================================================
-        // 5. ТЕХНИКА, ОЧИСТКА ХРАНИЛИЩА, ВАНИЛА И РЕМКОМПЛЕКТЫ (Раздел 5 правил)
-        // =========================================================================
         ValidateVehiclesAndEquipment(root, mission, archive, issues);
 
-        // =========================================================================
-        // 6. ФАЙЛЫ PBO, БИТЫЕ ССЫЛКИ, НЕИСПОЛЬЗУЕМЫЕ SQF И ТРИГГЕРЫ (Разделы 5 и 6)
-        // =========================================================================
         if (archive != null)
         {
             ValidateFilesAndReferences(root, mission, archive, issues);
         }
 
-        // =========================================================================
-        // 7. МОДУЛИ WMT И EDIT TERRAIN OBJECT (Разделы 6 и 7 правил)
-        // =========================================================================
         ValidateModulesAndTriggers(root, mission, issues);
 
         return issues;
     }
 
-    // -------------------------------------------------------------------------
-    // Раздел 1: Проверка названия .pbo файла
-    // -------------------------------------------------------------------------
     private static void ValidateFileName(string? pboFileName, int totalSlots, List<ValidationIssue> issues)
     {
         const string cat = "1. Название файла и Настройки";
         if (string.IsNullOrWhiteSpace(pboFileName)) return;
 
         var fileName = Path.GetFileName(pboFileName);
-
-        // Точек должно быть ровно две: <имя>.<остров>.pbo
         int dotCount = fileName.Count(c => c == '.');
         if (dotCount != 2)
         {
@@ -113,7 +81,7 @@ public static class MissionValidator
                 Category = cat,
                 Severity = "Error",
                 Title = "Некорректное количество точек в имени файла PBO",
-                Details = $"Файл '{fileName}' содержит {dotCount} точ(ек), а по правилам должно быть ровно две: wog_<слоты>_<название>_<версия>.<остров>.pbo (например, версии пишутся слитно без точки: 10 вместо 1.0)."
+                Details = $"Файл '{fileName}' содержит {dotCount} точ(ек), а по правилам должно быть ровно две: wog_<слоты>_<название>_<версия>.<остров>.pbo."
             });
         }
 
@@ -132,7 +100,6 @@ public static class MissionValidator
             });
         }
 
-        // Проверка шаблона wog_<слоты>_<название>_<версия>
         var regex = new Regex(@"^wog_(\d+)_([a-z0-9_]+)_(\d+)$");
         var match = regex.Match(missionPart);
         if (!match.Success)
@@ -145,8 +112,8 @@ public static class MissionValidator
                 Severity = "Error",
                 Title = "Имя файла не соответствует шаблону WOG",
                 Details = hasVBeforeVersion
-                    ? $"В файле '{fileName}' использована буква 'v' перед версией, что запрещено правилами (нужно просто цифры, например _10)."
-                    : $"Имя '{missionPart}' не подходит под шаблон wog_<кол-во слотов>_<название>_<версия>. Разрешены только строчные латинские буквы, цифры и '_'."
+                    ? $"В файле '{fileName}' использована буква 'v' перед версией, что запрещено правилами."
+                    : $"Имя '{missionPart}' не подходит под шаблон wog_<кол-во слотов>_<название>_<версия>."
             });
         }
         else
@@ -159,8 +126,8 @@ public static class MissionValidator
                     RuleNumber = "П. 1 / 2.1",
                     Category = cat,
                     Severity = "Error",
-                    Title = "Количество слотов в имени файла не совпадает с реальным",
-                    Details = $"В названии файла указано {fileSlots} слотов, но фактически в миссии {totalSlots} слотов."
+                    Title = "Количество слотов в имени файла не совпадает с реальным (без учета БПЛА)",
+                    Details = $"В названии файла указано {fileSlots} слотов, но фактически игровых слотов в миссии: {totalSlots}."
                 });
             }
             else
@@ -171,15 +138,12 @@ public static class MissionValidator
                     Category = cat,
                     Severity = "Ok",
                     Title = "Название файла PBO соответствует правилам",
-                    Details = $"Файл '{fileName}' оформлен верно ({totalSlots} сл.)."
+                    Details = $"Файл '{fileName}' оформлен верно ({totalSlots} игровых сл.)."
                 });
             }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Раздел 2: Настройки, Бинаризация, Погода, Лобби, Картинки <= 200 Кб
-    // -------------------------------------------------------------------------
     private static void ValidateGeneralAndIntel(
         SqmClass root,
         MissionInfo mission,
@@ -190,7 +154,6 @@ public static class MissionValidator
     {
         const string cat = "1. Название файла и Настройки";
 
-        // П. 2.1: Название внутри миссии: WOG <слоты> <Название> <версия>
         if (string.IsNullOrWhiteSpace(mission.Name))
         {
             issues.Add(new ValidationIssue
@@ -238,8 +201,8 @@ public static class MissionValidator
                         RuleNumber = "П. 2.1",
                         Category = cat,
                         Severity = "Error",
-                        Title = "Число слотов в названии миссии не совпадает с реальным",
-                        Details = $"В названии '{mission.Name}' указано {titleSlots} сл., а в миссии {totalSlots} сл."
+                        Title = "Число слотов в названии миссии не совпадает с реальным (без БПЛА)",
+                        Details = $"В названии '{mission.Name}' указано {titleSlots} сл., а реальных игровых слотов в миссии: {totalSlots}."
                     });
                 }
                 else
@@ -256,7 +219,6 @@ public static class MissionValidator
             }
         }
 
-        // П. 2.2: Автор
         if (string.IsNullOrWhiteSpace(mission.Author))
         {
             issues.Add(new ValidationIssue
@@ -269,7 +231,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 2.2: Бинаризация mission.sqm
         if (!isBinarized)
         {
             issues.Add(new ValidationIssue
@@ -278,7 +239,7 @@ public static class MissionValidator
                 Category = cat,
                 Severity = "Error",
                 Title = "Бинаризация файла mission.sqm отключена",
-                Details = "По правилам проекта бинаризация файлов в настройках миссии обязательно должна быть включена."
+                Details = "По правилам проекта бинаризация файлов обязательно должна быть включена."
             });
         }
         else
@@ -293,7 +254,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 2.2: Размер одного изображения не более 200 Кб (± 10 Кб => 210 Кб)
         if (archive != null)
         {
             var imageEntries = archive.Entries.Where(e =>
@@ -319,7 +279,6 @@ public static class MissionValidator
             }
         }
 
-        // П. 2.3: Окружение (Дождь и Ветер <= 40%, Туман на островах CUP)
         var intel = root.GetClass("Mission")?.GetClass("Intel");
         if (intel != null)
         {
@@ -368,7 +327,6 @@ public static class MissionValidator
             }
         }
 
-        // П. 2.4: Сводка в лобби (<фракция> (<цвет>, атака) vs <фракция> (<цвет>, оборона))
         if (string.IsNullOrWhiteSpace(mission.Overview))
         {
             issues.Add(new ValidationIssue
@@ -393,9 +351,6 @@ public static class MissionValidator
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Раздел 3: Брифинг, ссылки на маркеры и скриншоты форм сторон
-    // -------------------------------------------------------------------------
     private static void ValidateBriefing(MissionInfo mission, List<ValidationIssue> issues)
     {
         const string cat = "3. Брифинг";
@@ -413,7 +368,6 @@ public static class MissionValidator
             return;
         }
 
-        // Проверяем все ссылки <marker name='...'> внутри текста брифинга
         var existingMarkers = new HashSet<string>(mission.Markers.Select(m => m.Name), StringComparer.OrdinalIgnoreCase);
         var markerRefRegex = new Regex(@"<marker\s+name\s*=\s*['""]([^'""]+)['""]", RegexOptions.IgnoreCase);
         var missingMarkers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -466,9 +420,6 @@ public static class MissionValidator
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Раздел 4: Слоты (<= 220), Штабное 1-е отделение, >= 3 медиков, Инженеры
-    // -------------------------------------------------------------------------
     private static void ValidateSlotsAndRoles(MissionInfo mission, int totalSlots, List<ValidationIssue> issues)
     {
         const string cat = "4. Слоты и Стороны";
@@ -491,8 +442,8 @@ public static class MissionValidator
                 RuleNumber = "П. 4.1",
                 Category = cat,
                 Severity = "Ok",
-                Title = $"Количество слотов в пределах нормы ({totalSlots} / 220)",
-                Details = $"Сторон конфликта: {mission.Groups.Select(g => g.Side).Distinct().Count()}."
+                Title = $"Количество игровых слотов в пределах нормы ({totalSlots} / 220)",
+                Details = $"Сторон конфликта: {mission.Groups.Select(g => g.Side).Distinct().Count()} (боты БПЛА исключены из подсчета)."
             });
         }
 
@@ -502,7 +453,6 @@ public static class MissionValidator
             var groups = sideGroup.ToList();
             if (groups.Count == 0) continue;
 
-            // П. 4.3: Первое по списку отделение должно быть штабным
             var firstGroup = groups[0];
             var firstLeaderRole = firstGroup.Units.FirstOrDefault()?.RoleDescription ?? "";
             bool isFirstHq = IsHqText(firstGroup.CallSign) || IsHqText(firstGroup.SquadDescription) || IsHqText(firstLeaderRole);
@@ -519,7 +469,6 @@ public static class MissionValidator
                 });
             }
 
-            // Проверяем, нет ли штабного отделения ниже по списку
             for (int i = 1; i < groups.Count; i++)
             {
                 var g = groups[i];
@@ -537,7 +486,6 @@ public static class MissionValidator
                 }
             }
 
-            // П. 4.6: Не менее 3-х медиков на стороне (если на стороне больше 15 человек)
             int sideSlots = groups.Sum(g => g.Units.Count);
             int medicCount = groups.SelectMany(g => g.Units).Count(IsUnitMedic);
             if (sideSlots >= 15 && medicCount < 3)
@@ -566,7 +514,7 @@ public static class MissionValidator
     }
 
     // -------------------------------------------------------------------------
-    // Раздел 5: Техника, очистка хранилища в атрибутах, ремкомплекты, ванила
+    // Раздел 5: Техника, Блокировка (LockStatus), Очистка, Вместимость (П. 5.5), Ремкомплекты, Ванила
     // -------------------------------------------------------------------------
     private static void ValidateVehiclesAndEquipment(
         SqmClass root,
@@ -576,7 +524,46 @@ public static class MissionValidator
     {
         const string cat = "5. Техника и Снаряжение";
 
-        // 1. Проверка неочищенного "Хранилища снаряжения" (ammoBox в mission.sqm) у техники и ящиков
+        // 1. Проверка статуса блокировки техники (должна быть разблокирована: UNLOCKED / DEFAULT)
+        var lockedVehicles = new List<string>();
+        foreach (var v in mission.Vehicles)
+        {
+            if (IsStaticScenery(v.VehicleClass) || v.VehicleClass.Contains("Box", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            bool isLocked = v.LockStatus.Equals("LOCKED", StringComparison.OrdinalIgnoreCase) ||
+                            v.LockStatus.Equals("LOCKEDPLAYER", StringComparison.OrdinalIgnoreCase);
+
+            if (isLocked)
+            {
+                lockedVehicles.Add($"{v.VehicleClass} ({(string.IsNullOrEmpty(v.CustomName) ? $"ID {v.Id}" : v.CustomName)}: {v.LockStatus})");
+            }
+        }
+
+        if (lockedVehicles.Count > 0)
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 5 / 5.7",
+                Category = cat,
+                Severity = "Error",
+                Title = $"Обнаружена заблокированная техника ({lockedVehicles.Count} ед.)",
+                Details = $"Техника должна иметь статус 'Разблокировано' (UNLOCKED/DEFAULT), кроме декоративных целей по п. 5.7: {string.Join(", ", lockedVehicles.Take(10))}."
+            });
+        }
+        else
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 5",
+                Category = cat,
+                Severity = "Ok",
+                Title = "Вся техника на миссии разблокирована (UNLOCKED)",
+                Details = $"Проверено единиц техники и ящиков: {mission.Vehicles.Count}."
+            });
+        }
+
+        // 2. Проверка неочищенного "Хранилища снаряжения" (ammoBox в mission.sqm)
         var entitiesRoot = root.GetClass("Mission")?.GetClass("Entities");
         var uncleanedVehicles = new List<string>();
         if (entitiesRoot != null)
@@ -607,7 +594,114 @@ public static class MissionValidator
             });
         }
 
-        // 2. Проверка локальности вызова скриптов снаряжения (if (local _unit) / isServer)
+        // 3. Точная математическая проверка вместимости инвентаря юнитов и техники по invetory.json (П. 5.5)
+        ArmaCapacityCatalog.EnsureLoaded();
+        var capacityErrors = new List<string>();
+
+        foreach (var g in mission.Groups)
+        {
+            foreach (var u in g.Units)
+            {
+                // Проверка Формы (Uniform)
+                if (u.Loadout.UniformItems.Count > 0)
+                {
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Uniform))
+                    {
+                        capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в форму (addItemToUniform), но форма не выдана!");
+                    }
+                    else
+                    {
+                        double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.UniformItems);
+                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Uniform) ?? 40;
+                        if (used > max + 0.5)
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Форма '{u.Loadout.Uniform}' ({used:F1} / {max:F0} ед.)");
+                    }
+                }
+
+                // Проверка Разгрузки (Vest)
+                if (u.Loadout.VestItems.Count > 0)
+                {
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Vest))
+                    {
+                        capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в разгрузку (addItemToVest), но разгрузка не выдана!");
+                    }
+                    else
+                    {
+                        double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.VestItems);
+                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Vest) ?? 140;
+                        if (used > max + 0.5)
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Разгрузка '{u.Loadout.Vest}' ({used:F1} / {max:F0} ед.)");
+                    }
+                }
+
+                // Проверка Рюкзака (Backpack)
+                if (u.Loadout.BackpackItems.Count > 0)
+                {
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Backpack))
+                    {
+                        capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в рюкзак (addItemToBackpack), но рюкзак не выдан!");
+                    }
+                    else
+                    {
+                        double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.BackpackItems);
+                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Backpack) ?? 200;
+                        if (used > max + 0.5)
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнен Рюкзак '{u.Loadout.Backpack}' ({used:F1} / {max:F0} ед.)");
+                    }
+                }
+            }
+        }
+
+        // Проверка вместимости кузова техники и ящиков (maximumLoad из invetory.json)
+        foreach (var v in mission.Vehicles)
+        {
+            if (v.Cargo.HasAnyCargo)
+            {
+                double cargoMass =
+                    ArmaCapacityCatalog.CalculateItemsMass(v.Cargo.Weapons) +
+                    ArmaCapacityCatalog.CalculateItemsMass(v.Cargo.Magazines) +
+                    ArmaCapacityCatalog.CalculateItemsMass(v.Cargo.Items) +
+                    ArmaCapacityCatalog.CalculateItemsMass(v.Cargo.Backpacks);
+
+                double? maxCargoLoad = ArmaCapacityCatalog.GetContainerMaxLoad(v.VehicleClass);
+                if (maxCargoLoad.HasValue && maxCargoLoad.Value > 0 && cargoMass > maxCargoLoad.Value + 1.0)
+                {
+                    capacityErrors.Add($"Техника/ящик '{v.VehicleClass}' ({(string.IsNullOrEmpty(v.CustomName) ? $"ID {v.Id}" : v.CustomName)}): переполнен инвентарь кузова ({cargoMass:F0} / {maxCargoLoad.Value:F0} ед.)");
+                }
+            }
+
+            // Если в mission.sqm не был переопределен AceCargoSpace — подставляем дефолтный из invetory.json
+            if (v.AceCargoSpace < 0)
+            {
+                var defaultAce = ArmaCapacityCatalog.GetVehicleAceCargoSpace(v.VehicleClass);
+                if (defaultAce.HasValue) v.AceCargoSpace = (int)defaultAce.Value;
+            }
+        }
+
+        if (capacityErrors.Count > 0)
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 5.5",
+                Category = cat,
+                Severity = "Error",
+                Title = $"Переполнение инвентаря юнитов или техники ({capacityErrors.Count} шт.)",
+                Details = string.Join("; ", capacityErrors.Take(12))
+            });
+        }
+        else
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 5.5",
+                Category = cat,
+                Severity = "Ok",
+                Title = "Вместимость инвентаря всех юнитов, ящиков и техники в норме",
+                Details = "Проверено по точным значениям mass и maximumLoad из конфигов Arma 3."
+            });
+        }
+
+        // 4. Проверка локальности вызова скриптов снаряжения
         var nonLocalInitEntities = new List<string>();
         foreach (var u in mission.Groups.SelectMany(g => g.Units))
         {
@@ -642,7 +736,7 @@ public static class MissionValidator
             });
         }
 
-        // 3. Проверка гусеничной техники на наличие ремкомплекта (ToolKit) и рюкзака в кузове (П. 5.10)
+        // 5. Проверка гусеничной техники на наличие ремкомплекта (ToolKit) и рюкзака
         var trackedWithoutToolkit = new List<string>();
         foreach (var v in mission.Vehicles)
         {
@@ -669,7 +763,7 @@ public static class MissionValidator
             });
         }
 
-        // 4. Проверка на запрещенное ванильное вооружение, броню и фургон Van (П. 5.6, 5.8)
+        // 6. Проверка на запрещенное ванильное вооружение, броню и фургон Van
         var forbiddenFound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var u in mission.Groups.SelectMany(g => g.Units))
         {
@@ -698,9 +792,10 @@ public static class MissionValidator
             });
         }
     }
+    
 
     // -------------------------------------------------------------------------
-    // Разделы 5.4 и 6.5: Проверка путей файлов, битых ссылок и НЕИСПОЛЬЗУЕМЫХ файлов в PBO
+    // Разделы 5.4 и 6.5: Проверка путей файлов, логотипа, битых ссылок и НЕИСПОЛЬЗУЕМЫХ файлов
     // -------------------------------------------------------------------------
     private static void ValidateFilesAndReferences(
         SqmClass root,
@@ -710,7 +805,6 @@ public static class MissionValidator
     {
         const string cat = "6. Файлы PBO и Скрипты";
 
-        // 1. П. 5.4: Запрет пробелов и спецсимволов в названиях файлов (кроме '_', '.', '\', '/')
         var badFileNames = new List<string>();
         foreach (var entry in archive.Entries)
         {
@@ -733,7 +827,6 @@ public static class MissionValidator
             });
         }
 
-        // 2. Построение графа всех используемых файлов и поиск битых ссылок (отсутствующих файлов)
         var allPboFiles = new HashSet<string>(
             archive.Entries.Select(e => NormalizePath(e.FileName)),
             StringComparer.OrdinalIgnoreCase);
@@ -741,7 +834,6 @@ public static class MissionValidator
         var referencedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missingReferences = new List<string>();
 
-        // Помечаем системные входные файлы Армы как используемые
         foreach (var entry in archive.Entries)
         {
             var norm = NormalizePath(entry.FileName);
@@ -751,7 +843,6 @@ public static class MissionValidator
             }
         }
 
-        // Собираем все строковые значения из mission.sqm (init, overviewPicture, loadScreen, атрибуты)
         var sqmStrings = new List<(string Context, string Text)>();
         CollectAllStringsFromSqm(root, "mission.sqm", sqmStrings);
 
@@ -760,7 +851,6 @@ public static class MissionValidator
             ExtractFileReferencesFromText(text, ctx, "", allPboFiles, referencedFiles, missingReferences);
         }
 
-        // Также проверяем все текстовые файлы внутри PBO (.sqf, .ext, .hpp, .sqfc) на ссылки друг на друга
         foreach (var entry in archive.Entries)
         {
             var ext = Path.GetExtension(entry.FileName).ToLowerInvariant();
@@ -775,12 +865,10 @@ public static class MissionValidator
                 }
                 catch
                 {
-                    // Пропускаем ошибки чтения
                 }
             }
         }
 
-        // Добавляем картинки из брифинга
         foreach (var img in mission.BriefingImages)
         {
             var normImg = NormalizePath(img);
@@ -791,7 +879,6 @@ public static class MissionValidator
             }
         }
 
-        // Отчет по битым ссылкам (когда ссылаются на SQF или картинку, которой НЕТ в PBO!)
         if (missingReferences.Count > 0)
         {
             issues.Add(new ValidationIssue
@@ -815,7 +902,6 @@ public static class MissionValidator
             });
         }
 
-        // Отчет по НЕИСПОЛЬЗУЕМЫМ файлам в PBO (П. 6.5 правил)
         var unusedFiles = allPboFiles
             .Where(f => !referencedFiles.Contains(f))
             .ToList();
@@ -844,9 +930,87 @@ public static class MissionValidator
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Разделы 6 и 7: Модули WMT_Main, WMT_Time, WMT_Point, Триггеры и EditTerrainObject
-    // -------------------------------------------------------------------------
+    private static void ExtractFileReferencesFromText(
+        string text,
+        string sourceContext,
+        string currentDir,
+        HashSet<string> allPboFiles,
+        HashSet<string> referencedFiles,
+        List<string> missingReferences)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        // 1. ФИКС ДЛЯ ЛОГОТИПА (overviewPicture / loadScreen в mission.sqm):
+        // В mission.sqm строковое свойство хранится БЕЗ внешних кавычек (например просто "pics\logo.jpg" или "loadscreen.paa")
+        var trimmed = NormalizePath(text.Trim('"', '\'', ' ', '\t', '\r', '\n'));
+        if (Regex.IsMatch(trimmed, @"^[a-zA-Z0-9_\\.\-]+\.(?:sqf|ext|hpp|h|jpg|jpeg|png|paa|ogg|wss|fsm)$", RegexOptions.IgnoreCase))
+        {
+            RegisterFoundFileReference(trimmed, sourceContext, currentDir, allPboFiles, referencedFiles, missingReferences);
+        }
+
+        // 2. Ищем все пути в кавычках внутри скриптов, init-полей и description.ext
+        var fileRegex = new Regex(@"[""']([^""'<>|*?\r\n]+\.(?:sqf|ext|hpp|h|jpg|jpeg|png|paa|ogg|wss|fsm))[""']", RegexOptions.IgnoreCase);
+        foreach (Match m in fileRegex.Matches(text))
+        {
+            var rawRef = m.Groups[1].Value.Trim();
+            RegisterFoundFileReference(rawRef, sourceContext, currentDir, allPboFiles, referencedFiles, missingReferences);
+        }
+    }
+
+    private static void RegisterFoundFileReference(
+        string rawRef,
+        string sourceContext,
+        string currentDir,
+        HashSet<string> allPboFiles,
+        HashSet<string> referencedFiles,
+        List<string> missingReferences)
+    {
+        if (rawRef.StartsWith("\\a3\\", StringComparison.OrdinalIgnoreCase) ||
+            rawRef.StartsWith("a3\\", StringComparison.OrdinalIgnoreCase) ||
+            rawRef.StartsWith("\\ca\\", StringComparison.OrdinalIgnoreCase) ||
+            rawRef.StartsWith("\\rhs", StringComparison.OrdinalIgnoreCase) ||
+            rawRef.StartsWith("\\cup\\", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var norm = NormalizePath(rawRef);
+        if (allPboFiles.Contains(norm))
+        {
+            referencedFiles.Add(norm);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(currentDir))
+        {
+            var relNorm = NormalizePath(Path.Combine(currentDir, norm));
+            if (allPboFiles.Contains(relNorm))
+            {
+                referencedFiles.Add(relNorm);
+                return;
+            }
+        }
+
+        // Дополнительно проверяем по совпадению имени файла, если путь был указан относительно подпапки
+        var matchByFileName = allPboFiles.FirstOrDefault(f =>
+            f.EndsWith("\\" + norm, StringComparison.OrdinalIgnoreCase) ||
+            Path.GetFileName(f).Equals(norm, StringComparison.OrdinalIgnoreCase));
+        if (matchByFileName != null)
+        {
+            referencedFiles.Add(matchByFileName);
+            return;
+        }
+
+        if (norm.EndsWith(".sqf", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith(".paa", StringComparison.OrdinalIgnoreCase) ||
+            norm.EndsWith(".hpp", StringComparison.OrdinalIgnoreCase))
+        {
+            missingReferences.Add($"В '{sourceContext}' указан отсутствующий файл '{rawRef}'");
+        }
+    }
+
     private static void ValidateModulesAndTriggers(SqmClass root, MissionInfo mission, List<ValidationIssue> issues)
     {
         const string cat = "7. Модули WMT и Ограничения";
@@ -855,7 +1019,6 @@ public static class MissionValidator
         bool hasWmtMain = wmt.RawModuleAttributes.Keys.Any(k => k.StartsWith("WMT_Main.", StringComparison.OrdinalIgnoreCase));
         bool hasWmtTime = wmt.RawModuleAttributes.Keys.Any(k => k.StartsWith("WMT_Time.", StringComparison.OrdinalIgnoreCase));
 
-        // П. 6.3: Обязательно наличие модулей WMT_Main и WMT_Time
         var entitiesRoot = root.GetClass("Mission")?.GetClass("Entities");
         var logicTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int triggerCount = 0;
@@ -890,7 +1053,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 7 (WMT_Main): Дальность видимости по картам
         int maxAllowedViewDist = GetMaxAllowedViewDistance(mission.WorldName);
         if (wmt.ViewDistance > maxAllowedViewDist)
         {
@@ -915,7 +1077,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 7 (WMT_Main): Если присутствует авиация -> прорисовка земли обязательно 10000 м
         bool hasAircraft = mission.Vehicles.Any(v => IsAircraftClass(v.VehicleClass));
         if (hasAircraft && wmt.TerrainViewDistance != 10000)
         {
@@ -929,7 +1090,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 7 (WMT_Time): Время на миссию <= 120 минут (до 150 по согласованию), фризтайм = 3 мин, зона 20..100 м
         if (wmt.MissionTimeMinutes > 150)
         {
             issues.Add(new ValidationIssue
@@ -977,7 +1137,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 7 (WMT_Point): Таймер >= 300 сек -> должно быть включено оповещение
         foreach (var pt in wmt.CapturePoints)
         {
             if (pt.CaptureTimeSeconds >= 300)
@@ -993,7 +1152,6 @@ public static class MissionValidator
             }
         }
 
-        // П. 6.4: Не рекомендуется использовать связки из 4 и более триггеров
         if (triggerCount >= 4)
         {
             issues.Add(new ValidationIssue
@@ -1006,7 +1164,6 @@ public static class MissionValidator
             });
         }
 
-        // П. 7 (Модуль Редактировать объект ландшафта)
         if (cupEditTerrainErrors.Count > 0)
         {
             issues.Add(new ValidationIssue
@@ -1019,10 +1176,6 @@ public static class MissionValidator
             });
         }
     }
-
-    // =========================================================================
-    // Вспомогательные методы анализа SqmClass и SQF
-    // =========================================================================
 
     private static void CheckVehicleAmmoBoxRecursive(SqmClass container, PboArchive? archive, List<string> uncleanedList)
     {
@@ -1038,23 +1191,16 @@ public static class MissionValidator
 
             if (dataType != "Object") continue;
             var typeName = item.GetProperty("type")?.AsString() ?? "";
-            if (string.IsNullOrEmpty(typeName)) continue;
-
-            // Пропускаем статические заборы, окопы, камни и знаки
-            if (IsStaticScenery(typeName)) continue;
+            if (string.IsNullOrEmpty(typeName) || IsStaticScenery(typeName)) continue;
 
             var attributes = item.GetClass("Attributes");
             var initScript = ReadStringField(item, attributes, "init");
 
-            // Проверяем, очищается ли инвентарь скриптом (clearWeaponCargoGlobal и т.д.)
-            bool clearedByScript = HasScriptCargoClear(initScript, archive);
-            if (clearedByScript) continue;
+            if (HasScriptCargoClear(initScript, archive)) continue;
 
-            // Проверяем свойство ammoBox в CustomAttributes (3DEN редактор)
             var ammoBoxVal = FindCustomAttr(item, "ammoBox") ?? FindCustomAttr(attributes, "ammoBox");
             if (ammoBoxVal != null)
             {
-                // Пустое хранилище в 3DEN имеет вид: [[[[],[]],[[],[]],[[],[]],[[],[]]],false]
                 var innerArrays = Regex.Replace(ammoBoxVal, @"\s+", "");
                 if (!innerArrays.Contains("[[[[],[]],[[],[]],[[],[]],[[],[]]]"))
                 {
@@ -1139,58 +1285,6 @@ public static class MissionValidator
         }
     }
 
-    private static void ExtractFileReferencesFromText(
-        string text,
-        string sourceContext,
-        string currentDir,
-        HashSet<string> allPboFiles,
-        HashSet<string> referencedFiles,
-        List<string> missingReferences)
-    {
-        // Ищем любые строки в кавычках с расширением файла (.sqf, .ext, .hpp, .jpg, .png, .paa, .ogg, .fsm)
-        var fileRegex = new Regex(@"[""']([^""'<>|*?\r\n]+\.(?:sqf|ext|hpp|h|jpg|jpeg|png|paa|ogg|wss|fsm))[""']", RegexOptions.IgnoreCase);
-        foreach (Match m in fileRegex.Matches(text))
-        {
-            var rawRef = m.Groups[1].Value.Trim();
-            // Игнорируем системные пути Arma 3 (начинающиеся с \A3, \ca, \rhs, \cup и т.д., если их нет в PBO)
-            if (rawRef.StartsWith("\\a3\\", StringComparison.OrdinalIgnoreCase) ||
-                rawRef.StartsWith("a3\\", StringComparison.OrdinalIgnoreCase) ||
-                rawRef.StartsWith("\\ca\\", StringComparison.OrdinalIgnoreCase) ||
-                rawRef.StartsWith("\\rhs", StringComparison.OrdinalIgnoreCase) ||
-                rawRef.StartsWith("\\cup\\", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var norm = NormalizePath(rawRef);
-            if (allPboFiles.Contains(norm))
-            {
-                referencedFiles.Add(norm);
-                continue;
-            }
-
-            // Пробуем относительно папки текущего скрипта (например #include "macros.hpp")
-            if (!string.IsNullOrEmpty(currentDir))
-            {
-                var relNorm = NormalizePath(Path.Combine(currentDir, norm));
-                if (allPboFiles.Contains(relNorm))
-                {
-                    referencedFiles.Add(relNorm);
-                    continue;
-                }
-            }
-
-            // Если это ссылка на .sqf или локальную картинку, которой нет в PBO — фиксируем ошибку!
-            if (norm.EndsWith(".sqf", StringComparison.OrdinalIgnoreCase) ||
-                norm.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
-                norm.EndsWith(".hpp", StringComparison.OrdinalIgnoreCase))
-            {
-                missingReferences.Add($"В '{sourceContext}' указан отсутствующий файл '{rawRef}'");
-            }
-        }
-    }
-
     private static void InspectLogicAndTriggersRecursive(
         SqmClass container,
         HashSet<string> logicTypes,
@@ -1260,7 +1354,6 @@ public static class MissionValidator
             return true;
         }
 
-        // Или если у бойца в инвентаре лежит хирургический набор / сшиватель / >= 10 морфинов ACE
         return u.Loadout.ItemsAndMagazines.Keys.Any(k =>
             k.Contains("surgicalKit", StringComparison.OrdinalIgnoreCase) ||
             k.Contains("personalAidKit", StringComparison.OrdinalIgnoreCase) ||

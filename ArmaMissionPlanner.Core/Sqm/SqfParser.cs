@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using ArmaMissionPlanner.Core.Models;
 using ArmaMissionPlanner.Core.Pbo;
@@ -15,27 +18,24 @@ public static class SqfParser
         if (string.IsNullOrEmpty(scriptText)) return;
 
         scriptText = StripComments(scriptText);
+
         if (!string.IsNullOrEmpty(roleArg))
         {
             scriptText = ExtractSwitchCaseBlock(scriptText, roleArg);
         }
 
-        // 1. Форма, броня, рюкзак, каска
         unit.Loadout.Uniform = MatchLastSingleArg(scriptText, @"(?:forceAddUniform|addUniform)\s+[""']([^""']+)[""']");
         unit.Loadout.Vest = MatchLastSingleArg(scriptText, @"addVest\s+[""']([^""']+)[""']");
         unit.Loadout.Backpack = MatchLastSingleArg(scriptText, @"addBackpack(?:Global)?\s+[""']([^""']+)[""']");
         unit.Loadout.Headgear = MatchLastSingleArg(scriptText, @"addHeadgear\s+[""']([^""']+)[""']");
         unit.Loadout.Goggles = MatchLastSingleArg(scriptText, @"addGoggles\s+[""']([^""']+)[""']");
 
-        // 2. Оружие
         var weaponMatches = Regex.Matches(scriptText, @"addWeapon(?:Global)?\s+[""']([^""']+)[""']", RegexOptions.IgnoreCase);
         foreach (Match m in weaponMatches)
         {
-            var w = m.Groups[1].Value;
-            ClassifyWeapon(unit, w);
+            ClassifyWeapon(unit, m.Groups[1].Value);
         }
 
-        // 3. Обвесы и спецсредства
         foreach (Match m in Regex.Matches(scriptText, @"add(?:Primary|Secondary|Handgun)WeaponItem\s+[""']([^""']+)[""']", RegexOptions.IgnoreCase))
         {
             var item = m.Groups[1].Value;
@@ -50,7 +50,6 @@ public static class SqfParser
                 unit.Loadout.LinkedItems.Add(item);
         }
 
-        // 4. Сначала обрабатываем циклы: for "_i" from 1 to N do { ... addItemToVest "class" ... }
         var loopRegex = new Regex(@"for\s+[""'][^""']+[""']\s+from\s+(\d+)\s+to\s+(\d+)\s+do\s*\{([^}]+)\}", RegexOptions.IgnoreCase);
         var textWithoutLoops = loopRegex.Replace(scriptText, match =>
         {
@@ -58,13 +57,11 @@ public static class SqfParser
             int to = int.Parse(match.Groups[2].Value);
             int count = Math.Max(1, to - from + 1);
             string body = match.Groups[3].Value;
-
-            ParseUnitItemsInBlock(body, unit.Loadout.ItemsAndMagazines, count);
-            return string.Empty; // Удаляем обработанный цикл, чтобы не посчитать его второй раз
+            ParseUnitItemsInBlock(body, unit.Loadout, count);
+            return string.Empty;
         });
 
-        // 5. Одиночные добавления и addMagazines ["class", count]
-        ParseUnitItemsInBlock(textWithoutLoops, unit.Loadout.ItemsAndMagazines, 1);
+        ParseUnitItemsInBlock(textWithoutLoops, unit.Loadout, 1);
 
         foreach (Match m in Regex.Matches(textWithoutLoops, @"addMagazines\s*\[\s*[""']([^""']+)[""']\s*,\s*(\d+)\s*\]", RegexOptions.IgnoreCase))
         {
@@ -75,21 +72,42 @@ public static class SqfParser
     public static void PopulateVehicleCargo(MissionVehicle vehicle, PboArchive archive)
     {
         var (scriptPath, typeArg) = ParseInitCall(vehicle.InitScript);
-        if (string.IsNullOrEmpty(scriptPath)) return;
+        var fullContextText = vehicle.InitScript;
 
-        var scriptText = ReadScriptSafe(archive, scriptPath);
-        if (string.IsNullOrEmpty(scriptText)) return;
-
-        scriptText = StripComments(scriptText);
-        if (!string.IsNullOrEmpty(typeArg))
+        if (!string.IsNullOrEmpty(scriptPath))
         {
-            scriptText = ExtractSwitchCaseBlock(scriptText, typeArg);
+            var scriptText = ReadScriptSafe(archive, scriptPath);
+            if (!string.IsNullOrEmpty(scriptText))
+            {
+                scriptText = StripComments(scriptText);
+                if (!string.IsNullOrEmpty(typeArg))
+                {
+                    scriptText = ExtractSwitchCaseBlock(scriptText, typeArg);
+                }
+                fullContextText += "\n" + scriptText;
+            }
         }
 
-        ParseCargoCommand(scriptText, @"addWeaponCargo(?:Global)?", vehicle.Cargo.Weapons);
-        ParseCargoCommand(scriptText, @"addMagazineCargo(?:Global)?", vehicle.Cargo.Magazines);
-        ParseCargoCommand(scriptText, @"addItemCargo(?:Global)?", vehicle.Cargo.Items);
-        ParseCargoCommand(scriptText, @"addBackpackCargo(?:Global)?", vehicle.Cargo.Backpacks);
+        ParseCargoCommand(fullContextText, @"addWeaponCargo(?:Global)?", vehicle.Cargo.Weapons);
+        ParseCargoCommand(fullContextText, @"addMagazineCargo(?:Global)?", vehicle.Cargo.Magazines);
+        ParseCargoCommand(fullContextText, @"addItemCargo(?:Global)?", vehicle.Cargo.Items);
+        ParseCargoCommand(fullContextText, @"addBackpackCargo(?:Global)?", vehicle.Cargo.Backpacks);
+
+        // Достаем ACE Cargo из SQF (например: ["ACE_Wheel", _veh] call ace_cargo_fnc_loadItem или addSpareParts)
+        foreach (Match m in Regex.Matches(fullContextText, @"\[\s*[""']([^""']+)[""']\s*,[^\]]+\]\s*call\s+ace_cargo_fnc_loadItem", RegexOptions.IgnoreCase))
+        {
+            AddCount(vehicle.AceCargoItems, m.Groups[1].Value, 1);
+        }
+        foreach (Match m in Regex.Matches(fullContextText, @"\[\s*[^,]+\s*,\s*(\d+)\s*,\s*[""']([^""']+)[""']\s*\]\s*call\s+ace_repair_fnc_addSpareParts", RegexOptions.IgnoreCase))
+        {
+            if (int.TryParse(m.Groups[1].Value, out int cnt) && cnt > 0)
+                AddCount(vehicle.AceCargoItems, m.Groups[2].Value, cnt);
+        }
+        foreach (Match m in Regex.Matches(fullContextText, @"\[\s*[^,]+\s*,\s*(\d+)\s*\]\s*call\s+ace_cargo_fnc_setSpace", RegexOptions.IgnoreCase))
+        {
+            if (int.TryParse(m.Groups[1].Value, out int space))
+                vehicle.AceCargoSpace = space;
+        }
     }
 
     public static void ExtractBriefing(MissionInfo mission, PboArchive archive)
@@ -104,7 +122,6 @@ public static class SqfParser
             var text = ReadScriptSafe(archive, entry.FileName);
             if (string.IsNullOrEmpty(text)) continue;
 
-            // В SQF внутри строки "..." кавычки экранируются как ""
             var recordRegex = new Regex(
                 @"\[\s*[""']diary[""']\s*,\s*\[\s*[""']([^""']+)[""']\s*,\s*""((?:[^""]|"""")*)""\s*\]\s*\]",
                 RegexOptions.IgnoreCase);
@@ -112,7 +129,6 @@ public static class SqfParser
             foreach (Match m in recordRegex.Matches(text))
             {
                 var title = m.Groups[1].Value.Trim();
-                // Заменяем сдвоенные кавычки "" обратно на одинарные '
                 var content = m.Groups[2].Value.Replace("\"\"", "'").Trim();
 
                 mission.Briefing.Add(new BriefingSection
@@ -131,22 +147,44 @@ public static class SqfParser
         }
     }
 
-    private static void ParseUnitItemsInBlock(string block, Dictionary<string, int> target, int multiplier)
+    private static void ParseUnitItemsInBlock(string block, UnitLoadout loadout, int multiplier)
     {
-        var itemRegex = new Regex(@"add(?:ItemToUniform|ItemToVest|ItemToBackpack|Magazine|Item)\s+[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+        var itemRegex = new Regex(@"add(ItemToUniform|ItemToVest|ItemToBackpack|Magazine|Item)\s+[""']([^""']+)[""']", RegexOptions.IgnoreCase);
         foreach (Match m in itemRegex.Matches(block))
         {
-            AddCount(target, m.Groups[1].Value, multiplier);
+            var cmd = m.Groups[1].Value.ToLowerInvariant();
+            var cls = m.Groups[2].Value;
+            AddCount(loadout.ItemsAndMagazines, cls, multiplier);
+
+            if (cmd == "itemtouniform") AddCount(loadout.UniformItems, cls, multiplier);
+            else if (cmd == "itemtovest") AddCount(loadout.VestItems, cls, multiplier);
+            else if (cmd == "itemtobackpack") AddCount(loadout.BackpackItems, cls, multiplier);
         }
     }
 
     private static void ParseCargoCommand(string scriptText, string commandPattern, Dictionary<string, int> target)
     {
+        // Поддержка и циклов for "_i" from 1 to N do { _veh addMagazineCargoGlobal ["...", M]; }
+        var loopRegex = new Regex(@"for\s+[""'][^""']+[""']\s+from\s+(\d+)\s+to\s+(\d+)\s+do\s*\{([^}]+)\}", RegexOptions.IgnoreCase);
+        var textWithoutLoops = loopRegex.Replace(scriptText, match =>
+        {
+            int from = int.Parse(match.Groups[1].Value);
+            int to = int.Parse(match.Groups[2].Value);
+            int mult = Math.Max(1, to - from + 1);
+            ParseCargoCommandSingle(match.Groups[3].Value, commandPattern, target, mult);
+            return string.Empty;
+        });
+
+        ParseCargoCommandSingle(textWithoutLoops, commandPattern, target, 1);
+    }
+
+    private static void ParseCargoCommandSingle(string text, string commandPattern, Dictionary<string, int> target, int multiplier)
+    {
         var regex = new Regex($@"{commandPattern}\s*\[\s*[""']([^""']+)[""']\s*,\s*(\d+)\s*\]", RegexOptions.IgnoreCase);
-        foreach (Match m in regex.Matches(scriptText))
+        foreach (Match m in regex.Matches(text))
         {
             var itemClass = m.Groups[1].Value;
-            int count = int.Parse(m.Groups[2].Value);
+            int count = int.Parse(m.Groups[2].Value) * multiplier;
             AddCount(target, itemClass, count);
         }
     }
@@ -155,18 +193,15 @@ public static class SqfParser
     {
         if (string.IsNullOrWhiteSpace(initScript)) return (null, null);
 
-        // Находим путь к .sqf
         var pathMatch = Regex.Match(initScript, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase);
         if (!pathMatch.Success) return (null, null);
 
         string scriptPath = pathMatch.Groups[1].Value.Replace("/", "\\").TrimStart('\\');
 
-        // Ищем массив аргументов перед execVM / call, например: [this, "MSV", "KO"]
         string? roleArg = null;
         var argsMatch = Regex.Match(initScript[..pathMatch.Index], @"\[\s*this\s*(?:,\s*[""']([^""']+)[""'])+\s*\]", RegexOptions.IgnoreCase);
         if (argsMatch.Success)
         {
-            // Берем последний строковый аргумент (обычно именно он отвечает за роль/тип в switch)
             var captures = argsMatch.Groups[1].Captures;
             if (captures.Count > 0)
                 roleArg = captures[^1].Value;
@@ -202,16 +237,24 @@ public static class SqfParser
     private static void ClassifyWeapon(SquadUnit unit, string w)
     {
         var lower = w.ToLowerInvariant();
-        if (lower.Contains("binocular") || lower.Contains("vector") || lower.Contains("pdu4") || lower.Contains("lerca") || lower.Contains("tr8"))
+        if (lower.Contains("binocular") || lower.Contains("vector") || lower.Contains("pdu4") ||
+            lower.Contains("lerca") || lower.Contains("tr8") || lower.Contains("rangefinder") ||
+            lower.Contains("laserdesignator"))
         {
             if (!unit.Loadout.LinkedItems.Contains(w))
                 unit.Loadout.LinkedItems.Add(w);
         }
-        else if (lower.Contains("rpg") || lower.Contains("launch") || lower.Contains("at4") || lower.Contains("nlaw") || lower.Contains("m72") || lower.Contains("panzerfaust") || lower.Contains("igla") || lower.Contains("stinger") || lower.Contains("smaw") || lower.Contains("rshg"))
+        else if (lower.Contains("rpg") || lower.Contains("launch") || lower.Contains("at4") ||
+                 lower.Contains("nlaw") || lower.Contains("m72") || lower.Contains("panzerfaust") ||
+                 lower.Contains("igla") || lower.Contains("stinger") || lower.Contains("smaw") ||
+                 lower.Contains("rshg") || lower.Contains("strela") || lower.Contains("jav"))
         {
             unit.SecondaryWeapon = w;
         }
-        else if (lower.Contains("pistol") || lower.Contains("makarov") || lower.Contains("pya") || lower.Contains("m9") || lower.Contains("glock") || lower.Contains("tt33") || lower.Contains("aps") || lower.Contains("cz99") || lower.Contains("1911") || lower.Contains("rsp30") || lower.Contains("flare"))
+        else if (lower.Contains("pistol") || lower.Contains("makarov") || lower.Contains("pya") ||
+                 lower.Contains("m9") || lower.Contains("glock") || lower.Contains("tt33") ||
+                 lower.Contains("aps") || lower.Contains("cz99") || lower.Contains("1911") ||
+                 lower.Contains("rsp30") || lower.Contains("flare") || lower.Contains("hgun"))
         {
             unit.Handgun = w;
         }

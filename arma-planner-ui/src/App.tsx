@@ -10,6 +10,7 @@ import {
   Download, Copy, Eye, ChevronDown, ChevronRight, Trash2, Crosshair,
   CheckCircle2, AlertTriangle, XCircle
 } from 'lucide-react';
+
 // Компонент умной загрузки PNG-иконки класса из твоей выгрузки (с тихим скрытием, если иконки нет)
 const ClassIcon: React.FC<{ classNameStr?: string; size?: string }> = ({
                                                                          classNameStr,
@@ -322,8 +323,6 @@ function getRotatedEllipseLatLngs(
   return pts;
 }
 
-// Рендерит маркер карты: если это флаг/значок из PBO — подтягивает реальную PNG из /api/assets/icon/{id},
-// а для перекрашиваемых маркеров SWT использует четкий векторный SVG с поддержкой любого цвета!
 function renderMarkerHtml(
     typeIdxOrName: number | string,
     colorHex: string,
@@ -338,7 +337,6 @@ function renderMarkerHtml(
 
   const sizePx = Math.round(24 * scale);
 
-  // Если передано строковое имя маркера из mission.sqm (например flag_NATO, rhs_flag_Russia, loc_Bunker)
   if (typeof typeIdxOrName === 'string') {
     const lower = typeIdxOrName.toLowerCase();
     const isFullColorPngMarker =
@@ -493,11 +491,11 @@ function renderMarkerHtml(
 export default function App() {
   const [mission, setMission] = useState<MissionInfo | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'booking' | 'map' | 'briefing' | 'validation'>('booking');
+  const [activeTab, setActiveTab] = useState<'booking' | 'map' | 'briefing' | 'scripts' | 'validation'>('booking');
   const [validationFilter, setValidationFilter] = useState<'ALL' | 'Error' | 'Warning' | 'Ok'>('ALL');
+  const [selectedScriptPath, setSelectedScriptPath] = useState<string>('');
   const [selectedSide, setSelectedSide] = useState<string>('');
 
-  // Словарь русских названий предметов и техники из твоего arma_assets_dump_fixed.json
   const [assetNames, setAssetNames] = useState<Record<string, string>>({});
 
   const [unitAssignments, setUnitAssignments] = useState<Record<number, string>>({});
@@ -506,7 +504,6 @@ export default function App() {
   const [inspectedUnit, setInspectedUnit] = useState<SquadUnit | null>(null);
   const [inspectedVehicle, setInspectedVehicle] = useState<MissionVehicle | null>(null);
 
-  // Метки плана SWT Markers
   const [planMarkers, setPlanMarkers] = useState<SwtPlanMarker[]>([]);
   const [activeColorSwtIdx, setActiveColorSwtIdx] = useState<number>(12);
   const [activeTypeSwtIdx, setActiveTypeSwtIdx] = useState<number>(33);
@@ -541,7 +538,6 @@ export default function App() {
     activeColorRef.current = activeColorSwtIdx;
   }, [activeColorSwtIdx]);
 
-  // Загружаем каталог русских названий предметов и текущую миссию при старте
   useEffect(() => {
     fetch('/api/assets/catalog')
         .then(r => (r.ok ? r.json() : null))
@@ -558,14 +554,12 @@ export default function App() {
         .catch(() => {});
   }, []);
 
-  // Возвращает русское название предмета из дампа (если есть) + класс
   const formatClassTitle = (cls?: string) => {
     if (!cls) return '—';
     const ru = assetNames[cls] || assetNames[cls.toLowerCase()];
     return ru ? `${ru} (${cls})` : cls;
   };
 
-  // Удаление метки под курсором по клавише Delete
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && hoveredMarkerIdRef.current) {
@@ -787,7 +781,6 @@ export default function App() {
         const angle = Number(item[4] ?? 0);
         const sizeOrDims = item[5];
         const rawPoly = Array.isArray(item[7]) ? item[7].map(Number) : [];
-        // Гарантируем четное количество валидных координат [x1, y1, x2, y2...]
         const cleanPoly: number[] = [];
         for (let i = 0; i + 1 < rawPoly.length; i += 2) {
           if (Number.isFinite(rawPoly[i]) && Number.isFinite(rawPoly[i + 1])) {
@@ -831,7 +824,6 @@ export default function App() {
     }
   };
 
-  // Инициализация тактической карты Leaflet
   useEffect(() => {
     if (activeTab !== 'map' || !mission || !mapContainerRef.current) return;
 
@@ -859,7 +851,7 @@ export default function App() {
       zoomSnap: 0.5,
       doubleClickZoom: false,
       boxZoom: false,
-      keyboard: false, // Отключаем перехват клавиш Leaflet, чтобы Ctrl/Shift/Alt не дергали карту
+      keyboard: false,
     });
     leafletMapRef.current = map;
 
@@ -868,7 +860,6 @@ export default function App() {
       [currentWorldSize, currentWorldSize],
     ];
 
-    // 1. Слой топографической карты OCAP (с параметром bounds, чтобы не было 404 на -1.png!)
     const worldKey = (mission.worldName || 'altis').toLowerCase().trim();
     L.tileLayer(`/api/maps/${worldKey}/{z}/{x}/{y}.png`, {
       minZoom: 0,
@@ -880,7 +871,6 @@ export default function App() {
       tms: tileAlignMode === 'tms',
     }).addTo(map);
 
-    // 2. Прозрачная сетка 1 км + 100 м при приближении
     const grid1kmGroup = L.layerGroup().addTo(map);
     const grid100mGroup = L.layerGroup();
 
@@ -940,7 +930,6 @@ export default function App() {
     map.on('zoomend moveend', updateFineGrid);
     map.fitBounds(bounds);
 
-    // 3. Отрисовка маркеров самой миссии
     mission.markers.forEach(m => {
       if (!m.position || m.position.length < 3) return;
       const x = Number(m.position[0]);
@@ -983,7 +972,6 @@ export default function App() {
       }
     });
 
-    // 4. Отрисовка стартовых позиций отделений
     mission.groups.forEach(g => {
       const leader = g.units[0];
       if (!leader || !leader.position || leader.position.length < 3) return;
@@ -1007,7 +995,6 @@ export default function App() {
           .addTo(map);
     });
 
-    // 5. Отрисовка техники и ящиков
     mission.vehicles.forEach(v => {
       if (!v.position || v.position.length < 3) return;
       const x = Number(v.position[0]);
@@ -1029,7 +1016,6 @@ export default function App() {
       });
     });
 
-    // 6. Слой пользовательских меток плана КС-а (SWT Markers)
     const planLayer = L.layerGroup().addTo(map);
     planLayerGroupRef.current = planLayer;
 
@@ -1056,7 +1042,6 @@ export default function App() {
       });
     });
 
-    // Интерактивное рисование линий (-4), полос (-2) и эллипсов (-3)
     let drawMode: 'freeLine' | 'straightLine' | 'rectStrip' | 'ellipse' | null = null;
     let startPt: { x: number; y: number } | null = null;
     let currentPt: { x: number; y: number } | null = null;
@@ -1272,7 +1257,6 @@ export default function App() {
     };
   }, [activeTab, mission, mapConfig, tileAlignMode]);
 
-  // Отрисовка пользовательских меток SWT + Перетаскивание + Вращение
   useEffect(() => {
     const layer = planLayerGroupRef.current;
     const map = leafletMapRef.current;
@@ -1282,7 +1266,6 @@ export default function App() {
     planMarkers.forEach(m => {
       if (!Number.isFinite(m.x) || !Number.isFinite(m.y)) return;
 
-      // 1. Линия (-4) — строго защищена от undefined и нечетной длины!
       if (m.swtTypeIndex === -4) {
         const latlngs: [number, number][] = [];
         for (let i = 0; i + 1 < m.polyCoords.length; i += 2) {
@@ -1348,7 +1331,6 @@ export default function App() {
         return;
       }
 
-      // 2. Прямоугольник (-2) или Эллипс (-3)
       if (m.swtTypeIndex === -2 || m.swtTypeIndex === -3) {
         const pts =
             m.swtTypeIndex === -2
@@ -1411,7 +1393,6 @@ export default function App() {
         return;
       }
 
-      // 3. Иконка SWT (0..112)
       const icon = L.divIcon({
         className: '',
         iconSize: [0, 0],
@@ -1526,17 +1507,32 @@ export default function App() {
           </label>
         </header>
 
-        {/* Полоска параметров WMT */}
+        {/* Полоска параметров WMT и Разведки (Время и Погода) */}
         {mission && (
-            <div className="bg-slate-900/50 border-b border-slate-800 px-6 py-2.5 flex flex-wrap items-center gap-6 text-xs text-slate-300">
-              <div><span className="text-slate-500">Прорисовка:</span> <b>{mission.wmtSettings.viewDistance} м</b> (Земля: {mission.wmtSettings.terrainViewDistance} м)</div>
-              <div><span className="text-slate-500">Тепловизор:</span> <b className="text-amber-400">{mission.wmtSettings.thermalMode}</b></div>
-              <div><span className="text-slate-500">Время миссии:</span> <b>{mission.wmtSettings.missionTimeMinutes} мин</b> (Фризтайм: {mission.wmtSettings.freezeTimeMinutes} мин)</div>
-              <div><span className="text-slate-500">Стартовая зона:</span> <b>{mission.wmtSettings.startZoneSize} м</b></div>
-              <div><span className="text-slate-500">Потери:</span> <b>{(mission.wmtSettings.heavyLossesCoeff * 100).toFixed(1)}%</b></div>
-              {mission.wmtSettings.winnerByTimeText && (
-                  <div><span className="text-slate-500">По истечении времени:</span> <b className="text-sky-400">{mission.wmtSettings.winnerByTimeText}</b></div>
+            <div className="bg-slate-900/50 border-b border-slate-800 px-6 py-2.5 flex flex-wrap items-center gap-5 text-xs text-slate-300">
+              {mission.intel && (
+                  <>
+                    <div>
+                      <span className="text-slate-500">Дата и время:</span>{' '}
+                      <b className="text-emerald-400 font-mono">{mission.intel.formattedDateTime}</b>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Погода (Старт → Прогноз):</span>{' '}
+                      <span>Облака: <b>{mission.intel.startOvercastPercent}%→{mission.intel.forecastOvercastPercent}%</b></span>
+                      {' | '}
+                      <span>Дождь: <b className={mission.intel.startRainPercent > 40 || mission.intel.forecastRainPercent > 40 ? 'text-rose-400' : ''}>{mission.intel.startRainPercent}%→{mission.intel.forecastRainPercent}%</b></span>
+                      {' | '}
+                      <span>Туман: <b>{mission.intel.startFogPercent}%→{mission.intel.forecastFogPercent}%</b></span>
+                      {' | '}
+                      <span>Ветер: <b className={mission.intel.startWindPercent > 40 || mission.intel.forecastWindPercent > 40 ? 'text-rose-400' : ''}>{mission.intel.startWindPercent}%→{mission.intel.forecastWindPercent}%</b></span>
+                    </div>
+                  </>
               )}
+              <div><span className="text-slate-500">Прорисовка:</span> <b>{mission.wmtSettings.viewDistance} м</b> (Земля: {mission.wmtSettings.terrainViewDistance} м)</div>
+              <div><span className="text-slate-500">ТПВ:</span> <b className="text-amber-400">{mission.wmtSettings.thermalMode}</b></div>
+              <div><span className="text-slate-500">Время:</span> <b>{mission.wmtSettings.missionTimeMinutes} мин</b> (Фриз: {mission.wmtSettings.freezeTimeMinutes} мин)</div>
+              <div><span className="text-slate-500">Зона старта:</span> <b>{mission.wmtSettings.startZoneSize} м</b></div>
+              <div><span className="text-slate-500">Потери:</span> <b>{(mission.wmtSettings.heavyLossesCoeff * 100).toFixed(1)}%</b></div>
             </div>
         )}
 
@@ -1576,6 +1572,22 @@ export default function App() {
                 >
                   <FileText className="w-4 h-4" />
                   Брифинг и Формы сторон ({mission.briefingImages.length})
+                </button>
+                <button
+                    onClick={() => {
+                      setActiveTab('scripts');
+                      if (!selectedScriptPath && mission.scriptFiles && mission.scriptFiles.length > 0) {
+                        setSelectedScriptPath(mission.scriptFiles[0].path);
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition ${
+                        activeTab === 'scripts'
+                            ? 'border-emerald-500 text-emerald-400'
+                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                    }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Скрипты SQF ({mission.scriptFiles?.length || 0})
                 </button>
                 <button
                     onClick={() => setActiveTab('validation')}
@@ -1639,7 +1651,7 @@ export default function App() {
               </div>
           ) : (
               <>
-                {/* ВКЛАДКА 1: РАССТАНОВКА И СНАРЯЖЕНИЕ (С PNG ИКОНКАМИ ОРУЖИЯ!) */}
+                {/* ВКЛАДКА 1: РАССТАНОВКА И СНАРЯЖЕНИЕ */}
                 {activeTab === 'booking' && (
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1847,7 +1859,6 @@ export default function App() {
                               className="relative z-0 w-full h-full rounded-xl border border-slate-800 overflow-hidden"
                           />
 
-                          {/* Всплывающее меню постановки метки по 2x ЛКМ */}
                           {popupModal && (
                               <div
                                   style={{ left: popupModal.screenX, top: popupModal.screenY }}
@@ -1997,7 +2008,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Боковая панель: SWT Маркеры и Список Техники (с иконками!) */}
+                      {/* Боковая панель: SWT Маркеры и Список Техники */}
                       <div className="space-y-4">
                         <div className="border border-slate-800 rounded-xl bg-slate-900/60 p-4 space-y-3">
                           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">
@@ -2151,10 +2162,69 @@ export default function App() {
                       </div>
                     </div>
                 )}
-                {/* ВКЛАДКА 4: АВТОМАТИЧЕСКИЙ ВАЛИДАТОР ПРАВИЛ WOG */}
+
+                {/* ВКЛАДКА 4: ПРОСМОТРЩИК SQF И КОНФИГОВ МИССИИ */}
+                {activeTab === 'scripts' && mission.scriptFiles && (
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[680px]">
+                      <div className="border border-slate-800 rounded-xl bg-slate-900/60 flex flex-col overflow-hidden">
+                        <div className="px-4 py-3 border-b border-slate-800 font-bold text-xs uppercase tracking-wider text-slate-300">
+                          Файлы в PBO ({mission.scriptFiles.length})
+                        </div>
+                        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs">
+                          {mission.scriptFiles.map(sf => (
+                              <button
+                                  key={sf.path}
+                                  onClick={() => setSelectedScriptPath(sf.path)}
+                                  className={`w-full px-3.5 py-2.5 text-left font-mono flex items-center justify-between gap-2 transition ${
+                                      selectedScriptPath === sf.path
+                                          ? 'bg-emerald-950/60 text-emerald-300 border-l-2 border-emerald-400'
+                                          : 'text-slate-300 hover:bg-slate-800/60'
+                                  }`}
+                              >
+                                <span className="truncate">{sf.path}</span>
+                                <span className="text-[10px] text-slate-500 shrink-0">
+                          {(sf.sizeBytes / 1024).toFixed(1)} KB
+                        </span>
+                              </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="lg:col-span-3 border border-slate-800 rounded-xl bg-slate-900/60 flex flex-col overflow-hidden">
+                        {(() => {
+                          const currentFile =
+                              mission.scriptFiles.find(x => x.path === selectedScriptPath) ||
+                              mission.scriptFiles[0];
+                          if (!currentFile) {
+                            return <div className="p-6 text-slate-500 text-sm">В PBO нет текстовых скриптов.</div>;
+                          }
+                          return (
+                              <>
+                                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-emerald-400">
+                            {currentFile.path}
+                          </span>
+                                  <button
+                                      onClick={() => navigator.clipboard.writeText(currentFile.content)}
+                                      className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1 rounded text-xs transition"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    Скопировать код
+                                  </button>
+                                </div>
+                                <pre className="flex-1 p-4 overflow-auto bg-slate-950 text-slate-200 font-mono text-xs leading-relaxed">
+                          {currentFile.content}
+                        </pre>
+                              </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                )}
+
+                {/* ВКЛАДКА 5: АВТОМАТИЧЕСКИЙ ВАЛИДАТОР ПРАВИЛ WOG */}
                 {activeTab === 'validation' && mission.validationReport && (
                     <div className="max-w-5xl mx-auto space-y-5">
-                      {/* Карточки сводки */}
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <button
                             onClick={() => setValidationFilter('ALL')}
@@ -2211,7 +2281,6 @@ export default function App() {
                         </button>
                       </div>
 
-                      {/* Список проверок, сгруппированный по разделам правил */}
                       <div className="space-y-4">
                         {Array.from(new Set(mission.validationReport.map(i => i.category))).map(category => {
                           const items = mission.validationReport!.filter(
@@ -2269,7 +2338,7 @@ export default function App() {
           )}
         </main>
 
-        {/* МОДАЛКА: СНАРЯЖЕНИЕ ЮНИТА (С ИКОНКАМИ КАЖДОГО ПРЕДМЕТА!) */}
+        {/* МОДАЛКА: СНАРЯЖЕНИЕ ЮНИТА */}
         {inspectedUnit && (
             <div
                 onClick={() => setInspectedUnit(null)}
@@ -2345,7 +2414,7 @@ export default function App() {
             </div>
         )}
 
-        {/* МОДАЛКА: ИНВЕНТАРЬ ТЕХНИКИ / ЯЩИКА (С ИКОНКАМИ!) */}
+        {/* МОДАЛКА: ИНВЕНТАРЬ ТЕХНИКИ / ЯЩИКА (С ИКОНКАМИ, СТАТУСОМ И ACE CARGO ВНУТРИ ПРОВЕРКИ inspectedVehicle!) */}
         {inspectedVehicle && (
             <div
                 onClick={() => setInspectedVehicle(null)}
@@ -2372,10 +2441,72 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* Статус блокировки, Топливо, БК и Прочность */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950 p-2.5 rounded border border-slate-800 text-center">
+                  <div>
+                    <div className="text-[10px] text-slate-500">Статус:</div>
+                    <div className={`font-bold ${inspectedVehicle.lockStatus === 'LOCKED' || inspectedVehicle.lockStatus === 'LOCKEDPLAYER' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {inspectedVehicle.lockStatus || 'UNLOCKED'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500">Топливо:</div>
+                    <div className="font-bold text-slate-200">{Math.round((inspectedVehicle.fuel ?? 1) * 100)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500">Боекомплект турели:</div>
+                    <div className="font-bold text-slate-200">{Math.round((inspectedVehicle.ammo ?? 1) * 100)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500">Прочность:</div>
+                    <div className="font-bold text-slate-200">{Math.round((inspectedVehicle.health ?? 1) * 100)}%</div>
+                  </div>
+                </div>
+
+                {/* ACE Cargo (Колеса, гусеницы, канистры и т.д.) */}
+                {inspectedVehicle.aceCargoItems && Object.keys(inspectedVehicle.aceCargoItems).length > 0 && (
+                    <div>
+                      <div className="font-semibold text-emerald-400 mb-1">
+                        ACE Cargo (Колеса / Гусеницы / Канистры)
+                        {inspectedVehicle.aceCargoSpace !== undefined && inspectedVehicle.aceCargoSpace >= 0 && (
+                            <span className="text-slate-400 font-normal ml-2">(Вместимость: {inspectedVehicle.aceCargoSpace})</span>
+                        )}:
+                      </div>
+                      <div className="divide-y divide-slate-800 bg-slate-950 rounded border border-slate-800 px-3 py-1 font-mono">
+                        {Object.entries(inspectedVehicle.aceCargoItems).map(([k, v]) => (
+                            <div key={k} className="py-1.5 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <ClassIcon classNameStr={k} size="h-5 w-7" />
+                                <span className="truncate">{formatClassTitle(k)}</span>
+                              </div>
+                              <span className="text-emerald-400 font-bold shrink-0">x{v}</span>
+                            </div>
+                        ))}
+                      </div>
+                    </div>
+                )}
+
+                {/* Атрибуты 3DEN (Инженерная/Мед техника, скрипты и др.) */}
+                {inspectedVehicle.customAttributes && Object.keys(inspectedVehicle.customAttributes).filter(k => !k.toLowerCase().includes('ammobox')).length > 0 && (
+                    <div>
+                      <div className="font-semibold text-slate-400 mb-1">Атрибуты объекта в 3DEN:</div>
+                      <div className="max-h-28 overflow-y-auto divide-y divide-slate-800 bg-slate-950 rounded border border-slate-800 px-3 py-1 font-mono text-[11px]">
+                        {Object.entries(inspectedVehicle.customAttributes)
+                            .filter(([k]) => !k.toLowerCase().includes('ammobox'))
+                            .map(([k, v]) => (
+                                <div key={k} className="py-1 flex justify-between gap-3">
+                                  <span className="text-slate-400 truncate">{k}</span>
+                                  <span className="text-sky-300 truncate">{v}</span>
+                                </div>
+                            ))}
+                      </div>
+                    </div>
+                )}
+
                 {!inspectedVehicle.cargo.hasAnyCargo ? (
                     <p className="text-slate-400 py-4 text-center">Кузов пуст (дополнительный лут через SQF не выдан)</p>
                 ) : (
-                    <div className="max-h-80 overflow-y-auto space-y-3">
+                    <div className="max-h-64 overflow-y-auto space-y-3">
                       {Object.entries({
                         'Оружие и ПТ-средства': inspectedVehicle.cargo.weapons,
                         'Боекомплект (Магазины / Снаряды / Гранаты)': inspectedVehicle.cargo.magazines,

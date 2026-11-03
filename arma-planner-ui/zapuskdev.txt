@@ -1,5 +1,5 @@
 zapusk api
-dotnet run --project ArmaMissionPlanner.Api 
+dotnet run --project ArmaMissionPlanner.Ap 
 dotnet run --no-restore --project ArmaMissionPlanner.Api
 zapusk front
 npm run dev

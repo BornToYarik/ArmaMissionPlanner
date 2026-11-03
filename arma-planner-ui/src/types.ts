@@ -3,14 +3,40 @@ export interface MissionInfo {
     author: string;
     overview: string;
     worldName: string;
+    intel?: MissionIntel;
     wmtSettings: WmtConfig;
     briefing: BriefingSection[];
     briefingImages: string[];
     groups: SquadGroup[];
     vehicles: MissionVehicle[];
     markers: MissionMarker[];
+    scriptFiles?: MissionScriptFile[];
     validationReport?: ValidationIssue[];
 }
+
+export interface MissionIntel {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    formattedDateTime: string;
+    startOvercastPercent: number;
+    forecastOvercastPercent: number;
+    startRainPercent: number;
+    forecastRainPercent: number;
+    startFogPercent: number;
+    forecastFogPercent: number;
+    startWindPercent: number;
+    forecastWindPercent: number;
+}
+
+export interface MissionScriptFile {
+    path: string;
+    sizeBytes: number;
+    content: string;
+}
+
 export interface ValidationIssue {
     ruleNumber: string;
     category: string;
@@ -77,6 +103,9 @@ export interface UnitLoadout {
     weaponAttachments: string[];
     linkedItems: string[];
     itemsAndMagazines: Record<string, number>;
+    uniformItems?: Record<string, number>;
+    vestItems?: Record<string, number>;
+    backpackItems?: Record<string, number>;
 }
 
 export interface MissionVehicle {
@@ -88,6 +117,13 @@ export interface MissionVehicle {
     initScript: string;
     position: number[];
     directionDegrees: number;
+    lockStatus?: string;
+    fuel?: number;
+    health?: number;
+    ammo?: number;
+    aceCargoSpace?: number;
+    aceCargoItems?: Record<string, number>;
+    customAttributes?: Record<string, string>;
     cargo: VehicleCargo;
 }
 
