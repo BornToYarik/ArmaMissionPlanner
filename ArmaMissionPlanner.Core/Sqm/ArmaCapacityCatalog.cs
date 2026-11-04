@@ -41,21 +41,28 @@ public static class ArmaCapacityCatalog
             };
 
             string? foundPath = null;
-            foreach (var dir in searchDirs)
+            var dirInfo = new DirectoryInfo( baseDir ?? AppContext.BaseDirectory );
+            // Поднимаемся вверх по папкам от bin/Debug/net9.0 до корня проекта F:\projects\ArmaMissionPlanner
+            while (dirInfo != null)
             {
-                foreach (var fn in fileNames)
+                string[] candidates =
                 {
-                    var candidate = Path.Combine(dir, fn);
-                    if (File.Exists(candidate))
-                    {
-                        foundPath = candidate;
-                        break;
-                    }
-                }
-                if (foundPath != null) break;
-            }
+                    Path.Combine(dirInfo.FullName, "invetory.json"),
+                    Path.Combine(dirInfo.FullName, "inventory.json"),
+                    Path.Combine(dirInfo.FullName, "arma-icons", "invetory.json"),
+                    Path.Combine(dirInfo.FullName, "arma-planner-ui", "public", "invetory.json"),
+                    Path.Combine(dirInfo.FullName, "arma-planner-ui", "src", "invetory.json")
+                };
 
-            if (foundPath == null) return;
+            foundPath = candidates.FirstOrDefault(File.Exists);
+            if (foundPath != null) break;
+            dirInfo = dirInfo.Parent;
+
+            if (foundPath == null)
+            {
+                Console.WriteLine("[ArmaCapacity] ВНИМАНИЕ: Файл invetory.json НЕ НАЙДЕН ни в одной папке!");
+                return;
+            }
 
             try
             {
@@ -83,6 +90,7 @@ public static class ArmaCapacityCatalog
                 Console.WriteLine($"[ArmaCapacity] Ошибка чтения invetory.json: {ex.Message}");
             }
         }
+    }
     }
 
     public static double GetItemMass(string className)
