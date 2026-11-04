@@ -19,50 +19,46 @@ public static class ArmaCapacityCatalog
         EnsureLoaded();
         return Entries;
     }
+    private static string? FindInventoryJsonPath()
+{
+    // Стартуем от базовой папки запуска (или текущей рабочей директории)
+    var dir = new DirectoryInfo(AppContext.BaseDirectory);
 
+    while (dir != null)
+    {
+        string[] candidates =
+        {
+            Path.Combine(dir.FullName, "inventory.json"),
+            Path.Combine(dir.FullName, "invetory.json"), // на случай опечатки в имени файла
+            Path.Combine(dir.FullName, "arma-icons", "inventory.json"),
+            Path.Combine(dir.FullName, "arma-icons", "invetory.json")
+        };
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return path;
+        }
+
+        dir = dir.Parent;
+    }
+
+    return null;
+}
     public static void EnsureLoaded(string? baseDir = null)
     {
         lock (LockObj)
         {
             if (_loaded && Entries.Count > 0) return;
 
-            var root = baseDir ?? AppContext.BaseDirectory;
-            var fileNames = new[] { "invetory.json", "inventory.json" };
-            var searchDirs = new[]
-            {
-                root,
-                Path.GetFullPath(Path.Combine(root, "..")),
-                Path.GetFullPath(Path.Combine(root, "..", "arma-icons")),
-                Path.GetFullPath(Path.Combine(root, "..", "arma-planner-ui", "public")),
-                Path.GetFullPath(Path.Combine(root, "..", "arma-planner-ui", "public", "arma-icons")),
-                Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..")),
-                Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "arma-icons")),
-                Path.GetFullPath(Path.Combine(root, "..", "..", "..", "..", "arma-planner-ui", "public"))
-            };
+           var jsonPath = FindInventoryJsonPath();
+if (jsonPath == null)
+{
+    Console.WriteLine($"[ArmaCapacity] ОШИБКА: Файл inventory.json не найден! Проверено от: {AppContext.BaseDirectory}");
+    return;
+}
 
-            string? foundPath = null;
-            var dirInfo = new DirectoryInfo( baseDir ?? AppContext.BaseDirectory );
-            // Поднимаемся вверх по папкам от bin/Debug/net9.0 до корня проекта F:\projects\ArmaMissionPlanner
-            while (dirInfo != null)
-            {
-                string[] candidates =
-                {
-                    Path.Combine(dirInfo.FullName, "invetory.json"),
-                    Path.Combine(dirInfo.FullName, "inventory.json"),
-                    Path.Combine(dirInfo.FullName, "arma-icons", "invetory.json"),
-                    Path.Combine(dirInfo.FullName, "arma-planner-ui", "public", "invetory.json"),
-                    Path.Combine(dirInfo.FullName, "arma-planner-ui", "src", "invetory.json")
-                };
-
-            foundPath = candidates.FirstOrDefault(File.Exists);
-            if (foundPath != null) break;
-            dirInfo = dirInfo.Parent;
-
-            if (foundPath == null)
-            {
-                Console.WriteLine("[ArmaCapacity] ВНИМАНИЕ: Файл invetory.json НЕ НАЙДЕН ни в одной папке!");
-                return;
-            }
+Console.WriteLine($"[ArmaCapacity] Найден файл весов: {jsonPath}");
 
             try
             {
