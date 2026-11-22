@@ -1,9 +1,15 @@
 import sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'companion'))
-from configs import merge,turret_seats
+from configs import merge,turret_seats,vehicle_fields,stringtable,resolve_names
 from vendor.mission_parser import text_sqm
 class ConfigMergeTests(unittest.TestCase):
+ def test_cargo_fields_survive_inheritance_and_names_resolve_from_stringtable(self):
+  own=vehicle_fields({'ace_cargo_size':2,'ace_cargo_space':8,'ace_cargo_canLoad':0,'displayName':'$STR_GAZ'})
+  self.assertEqual(merge({'ace_cargo_size':4},own)['ace_cargo_size'],2)
+  self.assertEqual(own['ace_cargo_canload'],0)
+  strings=stringtable('<Project><Key ID="STR_GAZ"><Original>GAZ-66</Original><Russian>ГАЗ-66</Russian></Key></Project>'.encode('utf8'))
+  self.assertEqual(resolve_names('$STR_GAZ',strings),{'en':'GAZ-66','ru':'ГАЗ-66'})
  def test_plain_config_preserves_models_inheritance_and_declarations(self):
   d=text_sqm(b'class CfgVehicles { class House_F; class Land_Qalat: House_F { model="\\praa\\praa_buildings\\qalat.p3d"; }; delete OldHouse; };',config=True)['CfgVehicles']
   self.assertTrue(d['House_F']['__external'])

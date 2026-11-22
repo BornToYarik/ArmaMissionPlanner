@@ -1,0 +1,1 @@
+export function squadMembers(units){const groups=new Map();for(const u of units){if(u.groupId==null||u.mobility!=='foot')continue;const key=u.side+':'+u.groupId;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(u);}return groups;}

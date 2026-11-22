@@ -1,0 +1,1 @@
+export function waypointTop(x,top,width,height,occupied){let y=top;const hit=b=>x-width/2<b.right+5&&x+width/2>b.left-5&&y<b.bottom+5&&y+height>b.top-5;for(let i=0;i<occupied.length+1;i++){const collisions=occupied.filter(hit);if(!collisions.length)break;y=Math.min(...collisions.map(b=>b.top))-height-6;}return y;}

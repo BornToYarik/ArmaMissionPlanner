@@ -1,0 +1,78 @@
+<!doctype html><meta charset="utf-8"><title>Planner LOS GPU regression</title><pre id="result">Running…</pre><div id="view"></div><script type="module">
+import * as T from '/planner/wog/vendor/three.module.js';
+import {visibilityDepth,prepareVisibilityShapes} from '/planner/visibility-depth.mjs';
+import {terrainField,terrainTraceGLSL} from '/planner/visibility-terrain.mjs';
+import {terrainGridHit} from '/planner/wog/terrain-ray.js';
+import {projectVisibility} from '/planner/visibility-projection.mjs';
+import {ViewshedSurface,sightTestGLSL} from '/planner/viewshed-surface.mjs';
+const renderer=new T.WebGLRenderer();renderer.setSize(700,500);document.querySelector('#view').append(renderer.domElement);
+const checks=[],check=(name,ok,actual)=>checks.push({name,ok,actual});
+try{
+ const scene=new T.Scene(),g=new T.PlaneGeometry(100,100,100,100);g.rotateX(-Math.PI/2);
+ for(let i=0;i<g.attributes.position.count;i++){const p=g.attributes.position,x=p.getX(i);p.setY(i,Math.max(0,8-Math.abs(x)*2));}g.computeVertexNormals();
+ const terrain=new T.Mesh(g,new T.MeshBasicMaterial({color:0x666666,side:T.DoubleSide}));scene.add(terrain);
+ const origin=new T.Vector3(-20,1.7,0),result=visibilityDepth(renderer,{origin,radius:100,meshes:[],ground:terrain,size:512});
+ const probe=new T.WebGLRenderTarget(1,1),s=new T.Scene(),cam=new T.Camera();
+ const m=new T.ShaderMaterial({uniforms:{cube:{value:result.target.texture},delta:{value:new T.Vector3()}},vertexShader:'void main(){gl_Position=vec4(position,1.);}',fragmentShader:sightTestGLSL+'uniform samplerCube cube;uniform vec3 delta;void main(){float len=length(delta);vec3 dir=delta/len;gl_FragColor=vec4(sightTest(cube,dir,dir,len),0.,0.,1.);}'});s.add(new T.Mesh(new T.PlaneGeometry(2,2),m));
+ const visible=p=>{m.uniforms.delta.value.copy(p).sub(origin);renderer.setRenderTarget(probe);renderer.render(s,cam);const px=new Uint8Array(4);renderer.readRenderTargetPixels(probe,0,0,1,1,px);renderer.setRenderTarget(null);return px[0]>128;};
+ check('near flat ground visible',visible(new T.Vector3(-10,0,0))===true);check('hill near slope visible',visible(new T.Vector3(-2,4,0))===true);check('ground behind hill hidden',visible(new T.Vector3(15,0,0))===false);check('hill blocks downward line of sight',visible(new T.Vector3(5,0,2))===false);
+
+ // A grazing plane several kilometres wide must not self-shadow in triangles.
+ const flat=new T.Mesh(new T.PlaneGeometry(6000,6000,40,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({side:T.DoubleSide}));flat.position.set(2700,475,-2800);flat.updateMatrixWorld();
+ const oldOrigin=origin.clone();origin.set(2700,476.7,-2800);
+ const far=visibilityDepth(renderer,{origin,radius:5000,meshes:[],ground:flat,size:768});m.uniforms.cube.value=far.target.texture;
+ let clear=0,total=0;for(let x=-2500;x<=2500;x+=250)for(let z=-2500;z<=2500;z+=250){if(!x&&!z)continue;total++;if(visible(new T.Vector3(2700+x,475,-2800+z)))clear++;}
+ check('no checkerboard on grazing kilometre-wide ground',clear===total,{clear,total});
+ origin.copy(oldOrigin);
+ // Small clutter is excluded; the exact 1.4 m boundary and scaled instances count.
+ const base=new T.Mesh(new T.PlaneGeometry(100,100).rotateX(-Math.PI/2),new T.MeshBasicMaterial({side:T.DoubleSide}));
+ for(const height of [1.39,1.4]){const block=new T.Mesh(new T.BoxGeometry(1,height,8),new T.MeshBasicMaterial());block.position.set(-5,height/2,0);block.userData.category='building';await prepareVisibilityShapes([block]);const r=visibilityDepth(renderer,{origin,radius:100,meshes:[block],ground:base,size:512});m.uniforms.cube.value=r.target.texture;check('clutter height '+height,visible(new T.Vector3(-1,0,0))===(height<1.4));}
+ const roughGeo=new T.PlaneGeometry(2400,2400,120,120).rotateX(-Math.PI/2),positions=roughGeo.attributes.position;
+ const height=(x,z)=>300+60*Math.sin(x/180)+30*Math.cos(z/170);
+ for(let i=0;i<positions.count;i++)positions.setY(i,height(positions.getX(i),positions.getZ(i)));roughGeo.computeVertexNormals();
+ const rough=new T.Mesh(roughGeo,new T.MeshBasicMaterial({side:T.DoubleSide}));rough.updateMatrixWorld();origin.set(-1000,height(-1000,0)+1.7,0);
+ const hills=visibilityDepth(renderer,{origin,radius:3000,meshes:[],ground:rough,size:768});m.uniforms.cube.value=hills.target.texture;
+ const ray=new T.Raycaster(),v=new T.Vector3(),target=new T.Vector3();let agree=0,tested=0,falseVisible=0,falseHidden=0;
+ for(let i=0;i<positions.count;i+=23){target.fromBufferAttribute(positions,i);v.subVectors(target,origin);ray.set(origin,v.clone().normalize());ray.far=v.length()-.1;const expected=ray.intersectObject(rough).length===0,got=visible(target);tested++;if(expected===got)agree++;else if(got)falseVisible++;else falseHidden++;}
+ check('rough terrain agrees with exact triangle rays',agree/tested>.97,{agree,tested,falseVisible,falseHidden});
+ // Interior pixels, not only vertices: catches checkerboard self-occlusion.
+ let interiorClear=0,interiorTested=0,interiorWrongVisible=0,interiorWrongHidden=0;
+ const downRay=new T.Raycaster();
+ for(let x=-1123;x<=1123;x+=73)for(let z=-1127;z<=1127;z+=79){downRay.set(new T.Vector3(x,1000,z),new T.Vector3(0,-1,0));const hit=downRay.intersectObject(rough)[0];if(!hit)continue;v.subVectors(hit.point,origin);ray.set(origin,v.clone().normalize());ray.far=v.length()-.05;const expected=ray.intersectObject(rough).length===0,got=visible(hit.point);interiorTested++;if(expected===got)interiorClear++;else if(got)interiorWrongVisible++;else interiorWrongHidden++;}
+ check('rough triangle interiors have no checkerboard',interiorClear/interiorTested>.97,{agree:interiorClear,tested:interiorTested,falseVisible:interiorWrongVisible,falseHidden:interiorWrongHidden});origin.copy(oldOrigin);m.uniforms.cube.value=result.target.texture;
+
+ // Test the actual production heightfield traversal, independently of cube planes.
+ const fieldMaterial=new T.ShaderMaterial({uniforms:{heightMap:{value:null},rangeMap:{value:null},grid:{value:null},info:{value:null},eye:{value:origin},delta:{value:new T.Vector3()}},vertexShader:'void main(){gl_Position=vec4(position,1.);}',fragmentShader:terrainTraceGLSL+'uniform sampler2D heightMap,rangeMap;uniform vec4 grid,info;uniform vec3 eye,delta;void main(){float v=1.-terrainBlocked(heightMap,rangeMap,grid,info,eye,delta,vec2(0.,1.));gl_FragColor=vec4(v,0.,0.,1.);}'});
+ const fieldScene=new T.Scene();fieldScene.add(new T.Mesh(new T.PlaneGeometry(2,2),fieldMaterial));
+ const setField=mesh=>{const f=terrainField(mesh);fieldMaterial.uniforms.heightMap.value=f.heights;fieldMaterial.uniforms.rangeMap.value=f.ranges;fieldMaterial.uniforms.grid.value=f.grid;fieldMaterial.uniforms.info.value=f.info;};
+ const fieldVisible=p=>{fieldMaterial.uniforms.delta.value.copy(p).sub(origin);renderer.setRenderTarget(probe);renderer.render(fieldScene,cam);const px=new Uint8Array(4);renderer.readRenderTargetPixels(probe,0,0,1,1,px);renderer.setRenderTarget(null);return px[0]>128;};
+ setField(rough);origin.set(-1000,height(-1000,0)+1.7,0);
+ let exactAgree=0,exactCount=0,exactFalseVisible=0,exactFalseHidden=0;
+ for(let x=-1123;x<=1123;x+=73)for(let z=-1127;z<=1127;z+=79){const hit=terrainGridHit(new T.Ray(new T.Vector3(x,1000,z),new T.Vector3(0,-1,0)),rough);if(!hit)continue;v.subVectors(hit.point,origin);const obstruction=terrainGridHit(new T.Ray(origin,v.clone().normalize()),rough),expected=!obstruction||obstruction.distance>=v.length()-.05,got=fieldVisible(hit.point);exactCount++;if(expected===got)exactAgree++;else if(got)exactFalseVisible++;else exactFalseHidden++;}
+ check('production traversal: exact triangle interiors',exactAgree/exactCount>.995,{agree:exactAgree,tested:exactCount,falseVisible:exactFalseVisible,falseHidden:exactFalseHidden});
+ const live=await fetch('/terrain/takistan-detail.json').then(r=>r.json()),ng=live.resolution,liveGeo=new T.BufferGeometry(),verts=new Float32Array(ng*ng*3),ix=[];
+ for(let y=0;y<ng;y++)for(let x=0;x<ng;x++){const k=y*ng+x;verts.set([x/(ng-1)*live.worldSize-live.worldSize/2,live.heights[k],live.worldSize/2-y/(ng-1)*live.worldSize],k*3);if(x<ng-1&&y<ng-1)ix.push(k,k+1,k+ng,k+1,k+ng+1,k+ng);}
+ liveGeo.setAttribute('position',new T.BufferAttribute(verts,3));liveGeo.setIndex(ix);const liveMesh=new T.Mesh(liveGeo);liveMesh.updateMatrixWorld();setField(liveMesh);
+ const liveHeight=(x,z)=>terrainGridHit(new T.Ray(new T.Vector3(x,10000,z),new T.Vector3(0,-1,0)),liveMesh).point;
+ origin.copy(liveHeight(20,-4850));origin.y+=1.7;let liveAgree=0,liveCount=0,liveWrongVisible=0,liveWrongHidden=0;
+ for(let x=-1457;x<=1523;x+=113)for(let z=-6251;z<=-3351;z+=127){const pt=liveHeight(x,z);v.subVectors(pt,origin);const hit=terrainGridHit(new T.Ray(origin,v.clone().normalize()),liveMesh),expected=!hit||hit.distance>=v.length()-.05,got=fieldVisible(pt);liveCount++;if(expected===got)liveAgree++;else if(got)liveWrongVisible++;else liveWrongHidden++;}
+ check('Takistan around Rasman: production traversal vs exact terrain',liveAgree/liveCount>.995,{agree:liveAgree,tested:liveCount,falseVisible:liveWrongVisible,falseHidden:liveWrongHidden});
+ origin.copy(oldOrigin);
+ const baked=projectVisibility(renderer,visibilityDepth(renderer,{origin,radius:100,meshes:[],ground:terrain,size:512,objectsOnly:true}),{ground:terrain,size:1024});
+ const pixels=new Uint8Array(1024*1024*4);renderer.readRenderTargetPixels(baked.target,0,0,1024,1024,pixels);
+ const sampleMask=(x,z)=>{const u=(x-baked.maskBounds.x)/baked.maskBounds.z,v=(baked.maskBounds.y-z)/baked.maskBounds.w,k=(Math.floor(v*1024)*1024+Math.floor(u*1024))*4;return [pixels[k],pixels[k+1]];};
+ check('visible ground actually tinted',sampleMask(-10,0)[0]>128,sampleMask(-10,0));check('hidden ground not tinted',sampleMask(15,0)[0]===0,sampleMask(15,0));
+
+ const slopeGeo=new T.PlaneGeometry(4000,4000,128,128).rotateX(-Math.PI/2),sp=slopeGeo.attributes.position;
+ for(let i=0;i<sp.count;i++)sp.setY(i,400+sp.getX(i)*.21+sp.getZ(i)*.17);
+ const slope=new T.Mesh(slopeGeo,new T.MeshBasicMaterial());slope.updateMatrixWorld();origin.set(0,401.7,0);
+ const smooth=projectVisibility(renderer,visibilityDepth(renderer,{origin,radius:5000,meshes:[],ground:slope,objectsOnly:true,size:768}),{ground:slope,size:1024});
+ const slopePixels=new Uint8Array(1024*1024*4);renderer.readRenderTargetPixels(smooth.target,0,0,1024,1024,slopePixels);let slopeHoles=0;for(let y=2;y<1022;y++)for(let x=2;x<1022;x++)if(slopePixels[(y*1024+x)*4]<250)slopeHoles++;
+ check('entire grazing slope has no stripes or triangle holes',slopeHoles===0,{holes:slopeHoles,pixels:1020*1020});smooth.target.dispose();smooth.nearTarget.dispose();origin.copy(oldOrigin);
+ const timings=[];for(let i=0;i<5;i++){const start=performance.now(),r=visibilityDepth(renderer,{origin,radius:3000,meshes:[],ground:rough,size:768,objectsOnly:true}),p=projectVisibility(renderer,r,{ground:rough,size:2048});renderer.getContext().finish();timings.push(performance.now()-start);p.target.dispose();p.nearTarget?.dispose();}
+ check('warm full-detail calculation measured',timings.every(Number.isFinite),timings.map(x=>Math.round(x)));
+ const views=new ViewshedSurface(50);views.set(1,baked,['#39dba3']);terrain.material.onBeforeCompile=s=>views.attach(s);terrain.material.needsUpdate=true;
+ const view=new T.PerspectiveCamera(45,1.4,.1,500);view.position.set(-70,65,70);view.lookAt(0,0,0);renderer.render(scene,view);check('terrain overlay compiles',renderer.info.programs.every(p=>p.diagnostics?.runnable!==false));
+ document.querySelector('#result').textContent=JSON.stringify({passed:checks.every(c=>c.ok),checks},null,2);
+}catch(e){document.querySelector('#result').textContent=JSON.stringify(checks,null,2)+'\n'+String(e.stack);throw e;}
+</script>

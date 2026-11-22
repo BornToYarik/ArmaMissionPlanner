@@ -25,7 +25,8 @@ export class Environment {
  async model(id){return cachedRequest(this.geometry,id,async()=>{
   const meta=this.catalog.models[id];if(!meta)throw Error(t('Invalid environment model index: ')+id);
   const yieldBefore=workBudget();if(yieldBefore)await yieldBefore;
-  const d=meta.pack?(await this.pack(meta.pack))[meta.file]:await read(root+meta.file),g=new THREE.BufferGeometry();let created=[];
+  const d=meta.pack?(await this.pack(meta.pack))[meta.file]:await read(root+meta.file);
+  const build=async d=>{const g=new THREE.BufferGeometry();let created=[];
   try{
    const wait=workBudget();if(wait)await wait;
    g.setAttribute('position',new THREE.Float32BufferAttribute(d.positions,3));g.setIndex(d.indices);if(d.uvs)g.setAttribute('uv',new THREE.Float32BufferAttribute(d.uvs,2));g.setAttribute('normal',new THREE.BufferAttribute(await meshNormals(g.attributes.position.array,g.index.array),3));for(const group of d.groups||[])g.addGroup(group.start,group.count,group.materialIndex);
@@ -45,6 +46,9 @@ export class Environment {
    });
    return {geometry:g,materials:d.groups?.length?created:created[0],meta};
   }catch(error){g.dispose();for(const material of created)material.dispose();throw error;}
+  };const visual=await build(d);
+  if(meta.visibilityFile){const detailed=await build(await read(root+meta.visibilityFile));visual.geometry.userData.visibilityModel=detailed;visual.geometry.addEventListener('dispose',()=>detailed.geometry.dispose());}
+  return visual;
  });}
  async pack(file){
   this.packs??=new Map();this.pendingPacks??=new Map();
@@ -79,7 +83,7 @@ export class Environment {
  retry(){this.failedJobs?.clear();this.lastKey='';this.stats.error=null;}
  async update(target,distance,quality){
   this.failedJobs??=new Map();this.activeJobs??=new Set();
-  const size=this.world.tileSize,x=target.x+this.half,y=this.half-target.z,radius=natureObjectRange(this.world,quality),buildingRadius=mapObjectRange(this.world);
+  const size=this.world.tileSize,x=target.x+this.half,y=this.half-target.z,radius=this.observerRange??natureObjectRange(this.world,quality),buildingRadius=this.observerRange??mapObjectRange(this.world);
   const key=[Math.floor(x/128),Math.floor(y/128),radius,this.vegetation,this.enabled].join(':');
   const retryDue=[...this.failedJobs.values()].some(f=>f.attempts<3&&performance.now()>=f.retryAt);
   if(key===this.lastKey&&!retryDue)return this.pending;this.lastKey=key;
@@ -104,7 +108,7 @@ export class Environment {
   this.jobs=jobs.filter(job=>{const failure=this.failedJobs.get(job.id);return !job.store.has(job.key)&&!this.activeJobs.has(job.id)&&(!failure||failure.attempts<3&&performance.now()>=failure.retryAt);}).sort((a,b)=>a.distance-b.distance);
   this.syncBatches();if(this.stats.loading)return this.pending;
   this.stats.loading=true;environmentCheckpoint('start');
-  this.pending=Promise.all([this.loadNext(),this.loadNext()]).finally(()=>{this.stats.loading=false;this.syncBatches();environmentCheckpoint('ready',{tiles:this.buildingBatches.size+this.natureBatches.size,models:this.geometry.size,failures:this.failedJobs.size});});
+  this.pending=Promise.all(Array.from({length:4},()=>this.loadNext())).finally(()=>{this.stats.loading=false;this.syncBatches();environmentCheckpoint('ready',{tiles:this.buildingBatches.size+this.natureBatches.size,models:this.geometry.size,failures:this.failedJobs.size});});
   return this.pending;
  }
  retire(id,key,meshes,store){

@@ -1,3 +1,5 @@
+import Planning2D from './Planning2D';
+import type {PlannerCommand,PlannerSnapshot} from './planning-sync';
 import Planning3D from './Planning3D';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
@@ -430,6 +432,11 @@ export default function App() {
   const bookingTableRef = useRef<HTMLDivElement>(null);
   const [planning3d, setPlanning3d] = useState(false);
   const [planningStarted, setPlanningStarted] = useState(false);
+  const [planningMap,setPlanningMap]=useState<L.Map|null>(null);
+  const [planningSnapshot,setPlanningSnapshot]=useState<PlannerSnapshot|null>(null);
+  const [planningCommand,setPlanningCommand]=useState<PlannerCommand|null>(null);
+  const commandSerial=useRef(0);
+  const sendPlanningCommand=(c:Omit<PlannerCommand,'id'>)=>{setPlanningStarted(true);setPlanningCommand({...c,id:++commandSerial.current});};
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const planLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -521,7 +528,7 @@ export default function App() {
     setMission(data);
     const sides = Array.from(new Set(data.groups.map(g => g.side)));
     if (sides.length > 0) setSelectedSide(sides[0]);
-    setUnitAssignments({});
+    setUnitAssignments({});setPlanningSnapshot(null);setPlanningCommand(null);setPlanningStarted(false);
     setExpandedGroups({});
     setPopupModal(null);
 
@@ -772,7 +779,7 @@ export default function App() {
 
     if (leafletMapRef.current) {
       leafletMapRef.current.remove();
-      leafletMapRef.current = null;
+      leafletMapRef.current = null;setPlanningMap(null);
     }
 
     const currentWorldSize = mapConfig.worldSize;
@@ -796,7 +803,7 @@ export default function App() {
       boxZoom: false,
       keyboard: false,
     });
-    leafletMapRef.current = map;
+    leafletMapRef.current = map;setPlanningMap(map);
 
     const bounds: L.LatLngBoundsExpression = [
       [0, 0],
@@ -804,6 +811,10 @@ export default function App() {
     ];
 
     const worldKey = (mission.worldName || 'altis').toLowerCase().trim();
+    // Real georeferenced 2D ground imagery works even without the owner's
+    // optional local OCAP tile directory. Existing topographic tiles sit above it.
+    map.createPane('satelliteBase').style.zIndex='150';
+    L.imageOverlay(`/maps/${worldKey}-satellite.webp`,bounds,{pane:'satelliteBase',attribution:'Arma terrain / WOG Replay'}).addTo(map);
     L.tileLayer(`/api/maps/${worldKey}/{z}/{x}/{y}.png`, {
       minZoom: 0,
       maxZoom: maxZoom + 2,
@@ -914,50 +925,6 @@ export default function App() {
         });
         L.marker([y, x], { icon, interactive: false }).addTo(map);
       }
-    });
-
-    mission.groups.forEach(g => {
-      const leader = g.units[0];
-      if (!leader || !leader.position || leader.position.length < 3) return;
-      const x = Number(leader.position[0]);
-      const y = Number(leader.position[2]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-
-      const sideColor =
-          g.side === 'West' ? '#3b82f6' : g.side === 'East' ? '#ef4444' : '#22c55e';
-
-      const icon = L.divIcon({
-        className: '',
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
-        html: `<div style="transform:translate(-50%, -50%);background:${sideColor};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;border:1px solid #fff;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,0.6);">
-          ${g.callSign} (${g.units.length})
-        </div>`,
-      });
-      L.marker([y, x], { icon })
-          .bindPopup(`<b>[${g.side}] ${g.callSign}</b><br/>${g.squadDescription || 'Пехота'}<br/>Слотов: ${g.units.length}`)
-          .addTo(map);
-    });
-
-    mission.vehicles.forEach(v => {
-      if (!v.position || v.position.length < 3) return;
-      const x = Number(v.position[0]);
-      const y = Number(v.position[2]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-
-      const marker = L.circleMarker([y, x], {
-        radius: 5,
-        fillColor: v.cargo.hasAnyCargo ? '#f59e0b' : '#94a3b8',
-        color: '#0f172a',
-        weight: 1.5,
-        fillOpacity: 0.95,
-      }).addTo(map);
-
-      marker.bindTooltip(`${v.vehicleClass}${v.cargo.hasAnyCargo ? ' (Есть БК/Груз)' : ''}`);
-      marker.on('click', e => {
-        L.DomEvent.stopPropagation(e);
-        setInspectedVehicle(v);
-      });
     });
 
     const planLayer = L.layerGroup().addTo(map);
@@ -1197,7 +1164,7 @@ export default function App() {
       window.removeEventListener('keydown', handleAltWidthExpand);
       window.removeEventListener('mouseup', finishDrawing);
       map.remove();
-      leafletMapRef.current = null;
+      leafletMapRef.current = null;setPlanningMap(null);
     };
   }, [planning3d, activeTab, mission, mapConfig, tileAlignMode, markerCatalog, colorCatalog]);
 
@@ -1391,7 +1358,7 @@ export default function App() {
         map.on('mouseup', onUp);
       });
     });
-  }, [planMarkers, activeTab, mapConfig, tileAlignMode, markerCatalog]);
+  }, [planMarkers, planning3d, activeTab, mapConfig, tileAlignMode, markerCatalog]);
 
   const confirmPopupMarker = () => {
     if (!popupModal) return;
@@ -1793,7 +1760,7 @@ export default function App() {
 
                 {/* ВКЛАДКА 2: ТАКТИЧЕСКАЯ КАРТА, ТЕХНИКА И SWT MARKERS */}
                 {activeTab === 'map' && <div className="flex gap-2 mb-4"><button className="px-4 py-2 rounded bg-slate-700" onClick={() => setPlanning3d(false)}>2D · существующий план</button><button className="px-4 py-2 rounded bg-emerald-800" onClick={() => {setPlanningStarted(true);setPlanning3d(true);}}>3D · маршруты и видимость</button></div>}
-                <div style={{display: activeTab === 'map' && planning3d ? 'block' : 'none'}}>{planningStarted && <Planning3D key={mission.name + mission.worldName} mission={mission} assignments={unitAssignments} markers={planMarkers} markerCatalog={markerCatalog} />}</div>
+                <div style={{display: activeTab === 'map' && planning3d ? 'block' : 'none'}}>{planningStarted && <Planning3D key={mission.name + mission.worldName} mission={mission} assignments={unitAssignments} markers={planMarkers} markerCatalog={markerCatalog} colorCatalog={colorCatalog} command={planningCommand} onSnapshot={setPlanningSnapshot} onMarkers={setPlanMarkers} />}</div>
                 {activeTab === 'map' && !planning3d && (
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                       <div className="lg:col-span-3 space-y-2">
@@ -1823,6 +1790,7 @@ export default function App() {
                           </div>
                         </div>
 
+                        <Planning2D map={planningMap} mission={mission} snapshot={planningSnapshot} assignments={unitAssignments} side={selectedSide} command={sendPlanningCommand} onInspect={id=>setInspectedVehicle(mission.vehicles.find(v=>v.id===id)||null)} />
                         <div className="relative w-full h-[680px]">
                           <div
                               ref={mapContainerRef}

@@ -83,7 +83,7 @@ def run_upgrade(store, folders, quality, log, app):
     targets=[('actor',actors['models'],None),('environment',environment['models'],environment)]
     if mission and mission.get('assetCatalog'):targets.append(('mission',mission['assetCatalog']['models'],mission['assetCatalog']))
     texture_dir=store.root/'overrides/models/local-textures'
-    seen={}
+    seen={};visibility_owners={}
     for kind,entries,owner in targets:
         iterable=entries.items() if isinstance(entries,dict) else enumerate(entries)
         for key,meta in iterable:
@@ -93,13 +93,23 @@ def run_upgrade(store, folders, quality, log, app):
             if source not in index:
                 report.append({'model':str(key),'kind':kind,'result':'Сохранена модель сайта: исходник не найден','file':meta.get('file')});continue
             budget=nature_budget if meta.get('category') in ('tree','bush','rock') else actor_budget
-            signature=(source,budget,meta.get('lod'))
+            highest=hasattr(store,'mission') and kind=='environment' and meta.get('category') in ('building','rock')
+            signature=(source,budget,meta.get('lod'),highest)
             if signature not in seen:
                 output=work/(str(len(jobs))+'.json');seen[signature]=output
                 job={'source':source,'output':str(output),'budget':budget,'textureDirectory':str(texture_dir),'textureSize':texture_size}
+                if highest:job['highestDetail']=True
                 if 'lod' in meta:job['referenceLod']=meta['lod']
                 jobs.append(job)
             models.append((kind,str(key),meta,seen[signature]))
+            if hasattr(store,'mission') and kind=='environment' and meta.get('category') in ('tree','bush'):
+                visibility_signature=(source,'visibility-highest')
+                if visibility_signature not in seen:
+                    output=work/(str(len(jobs))+'.json');seen[visibility_signature]=output
+                    jobs.append({'source':source,'output':str(output),'highestDetail':True,'textureDirectory':str(texture_dir),'textureSize':texture_size})
+                visibility_meta={**meta,'file':'visibility/'+hashlib.sha1(source.encode()).hexdigest()[:16]+'.json'}
+                models.append(('visibility',str(key),visibility_meta,seen[visibility_signature]))
+                visibility_owners[id(visibility_meta)]=meta
     executable=app.CONVERTER
     if not executable.is_file():raise ValueError('Рядом с утилитой отсутствует WOG-Studio.exe')
     good=0;actor_overrides={}
@@ -121,6 +131,9 @@ def run_upgrade(store, folders, quality, log, app):
                 file=meta['file'] if kind=='actor' else 'environment/'+meta['file']
                 app.write_override(store,file,result)
                 if kind=='actor':actor_overrides[key]=result
+                elif kind=='visibility':
+                    visibility_owners[id(meta)]['visibilityFile']=meta['file']
+                    visibility_owners[id(meta)]['visibilitySourceLod']=raw['lod']
                 else:
                     meta.pop('pack',None);meta.update(bounds=result['bounds'],minY=result['minY'],triangles=len(result['indices'])//3)
                 good+=1

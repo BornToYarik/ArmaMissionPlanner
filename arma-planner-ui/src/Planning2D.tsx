@@ -1,0 +1,27 @@
+import {useEffect,useRef,useState} from 'react';
+import L from 'leaflet';
+import type {MissionInfo} from './types';
+import type {PlannerCommand,PlannerSnapshot,PlannerUnit} from './planning-sync';
+const color=(side:string)=>({WEST:'#258dc7',EAST:'#dc5555',GUER:'#36ac74',INDEPENDENT:'#36ac74'}[side.toUpperCase()]||'#b8a84d');
+const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+export default function Planning2D({map,mission,snapshot,assignments,side,command,onInspect}:{map:L.Map|null;mission:MissionInfo;snapshot:PlannerSnapshot|null;assignments:Record<number,string>;side:string;command:(c:Omit<PlannerCommand,'id'>)=>void;onInspect:(id:number)=>void}){
+ const [native,setNative]=useState<Record<string,{gameplay?:boolean;mobility?:string;displayName?:string;displayNames?:Record<string,string>}>>({});
+ useEffect(()=>{let disposed=false;fetch('/models/planning-native-catalog.json').then(r=>r.ok?r.json():null).then(d=>{if(!disposed&&d?.parameters)setNative(d.parameters);}).catch(()=>{});return()=>{disposed=true;};},[]);
+ const current=useRef({command,onInspect});current.current={command,onInspect};
+ useEffect(()=>{if(!map)return;const layer=L.layerGroup().addTo(map),selected=snapshot?.selected||[];
+  const units:PlannerUnit[]=snapshot?.units||[...mission.groups.flatMap(g=>g.units.map(u=>({id:u.id,point:[u.position[0],u.position[2],u.position[1]],side:g.side,name:u.roleDescription,groupId:g.id,groupLabel:g.callSign,mobility:'foot'}))),...mission.vehicles.filter(v=>native[v.vehicleClass.toLowerCase()]?.gameplay!==false&&!/ammobox|crate|wreck|mash/i.test(v.vehicleClass)).map(v=>({id:v.id,point:[v.position[0],v.position[2],v.position[1]],side:v.side,name:native[v.vehicleClass.toLowerCase()]?.displayNames?.ru||native[v.vehicleClass.toLowerCase()]?.displayName||v.description||v.customName||v.vehicleClass,mobility:native[v.vehicleClass.toLowerCase()]?.mobility||'vehicle'}))];
+  const visible=(u:PlannerUnit)=>!side||u.side.toUpperCase()===side.toUpperCase()||u.mobility!=='foot'&&!['WEST','EAST','GUER','INDEPENDENT','CIV','CIVILIAN'].includes(u.side.toUpperCase());
+  const groups=new Map<string,PlannerUnit[]>();for(const u of units.filter(visible)){const key=u.mobility==='foot'?u.side+':'+u.groupId:'vehicle:'+u.id;if(!groups.has(key))groups.set(key,[]);groups.get(key)!.push(u);}
+  for(const group of groups.values()){const first=group[0],p=group.reduce((a,u)=>a.map((v,i)=>v+u.point[i]/group.length),[0,0,0]),ids=group.map(u=>u.id),tags=[...new Set(ids.map(id=>assignments[id]).filter(Boolean))],name=(tags.length?'['+tags.join(' / ')+'] · ':'')+(first.mobility==='foot'?first.groupLabel+' · '+group.length:first.name),on=ids.every(id=>selected.includes(id));
+   const icon=L.divIcon({className:'',iconSize:[120,28],iconAnchor:[60,14],html:`<div style="min-width:120px;width:max-content;white-space:nowrap;font-size:12px;font-weight:bold;padding:3px 5px;color:${color(first.side)};background:#132333ed;border:2px solid ${on?'#ffe28b':color(first.side)};border-radius:4px">${esc(name||'Отделение')}</div>`});
+   const marker=L.marker([p[1],p[0]],{icon}).addTo(layer);marker.on('click',e=>{L.DomEvent.stopPropagation(e);current.current.command({action:'select',ids});});marker.on('dblclick',e=>{L.DomEvent.stopPropagation(e);if(first.mobility!=='foot')current.current.onInspect(first.id);});
+  }
+  for(const route of snapshot?.routes||[])if(route.points.length>1)L.polyline(route.points.map(p=>[p[1],p[0]] as [number,number]),{color:route.color,weight:4,opacity:.95}).addTo(layer);
+  for(const wp of snapshot?.waypoints||[]){const icon=L.divIcon({className:'',iconSize:[120,28],iconAnchor:[60,14],html:`<div style="min-width:120px;width:max-content;font-size:12px;white-space:nowrap;color:${wp.color};background:#132333ed;padding:4px 6px;border:1px solid ${wp.color};border-radius:4px">${esc(wp.text)}</div>`}),m=L.marker([wp.point[1],wp.point[0]],{icon,draggable:true}).addTo(layer);
+   m.on('dragend',()=>{const p=m.getLatLng();current.current.command({action:'move',key:wp.key,point:[p.lng,p.lat]});});m.on('contextmenu',e=>{L.DomEvent.stopPropagation(e);const b=document.createElement('button');b.textContent='Удалить вейпоинт';b.onclick=()=>{map.closePopup();current.current.command({action:'delete',key:wp.key});};L.popup().setLatLng(m.getLatLng()).setContent(b).openOn(map);});
+  }
+  const context=(e:L.LeafletMouseEvent)=>{if(!selected.length)return;const box=document.createElement('div');box.style.display='grid';box.style.gap='8px';for(const [mode,title] of [['road','Вейпоинт: по дорогам'],['free','Вейпоинт: самый быстрый путь'],['none','Вейпоинт: без маршрута']]){const b=document.createElement('button');b.textContent=title;b.onclick=()=>{map.closePopup();current.current.command({action:'route',ids:selected,point:[e.latlng.lng,e.latlng.lat],mode});};box.append(b);}L.popup().setLatLng(e.latlng).setContent(box).openOn(map);};map.on('contextmenu',context);
+  return()=>{map.off('contextmenu',context);map.removeLayer(layer);};
+ },[map,mission,snapshot,assignments,side,native]);
+ return <p className="text-xs text-slate-300 mb-2" role="status">ЛКМ — выбор отделения/техники; ПКМ по карте — вейпоинт. Точки можно перетаскивать и удалять через ПКМ. {snapshot?.status}</p>;
+}

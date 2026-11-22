@@ -1,5 +1,6 @@
 """Read-only installed addon inspection. No SQF is executed or game file edited."""
 import copy, hashlib, json, struct
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from vendor.mission_parser import rap, text_sqm, InvalidMission
 
@@ -23,7 +24,7 @@ def entries(path):
         offset=f.tell();prefix=props.get('prefix',path.stem).strip('\\').lower();out={}
         for name,h in rows:
             key=(prefix+'\\'+name.replace('/','\\')).strip('\\').lower()
-            if Path(name).suffix.lower() in ('.bin','.cpp','.p3d','.paa','.pac','.rtm'):
+            if Path(name).suffix.lower() in ('.bin','.cpp','.p3d','.paa','.pac','.rtm','.xml'):
                 out[key]={'archive':str(path),'offset':offset,'size':h[4],'method':h[0],'rawSize':h[1]}
             offset+=h[4]
         return out
@@ -49,7 +50,7 @@ def read(entry):
 
 def lower(v):return {k.lower():lower(x) for k,x in v.items()} if isinstance(v,dict) else v
 def vehicle_fields(node):
-    keys={'__inherit','__external','__delete','model','maxspeed','transportsoldier','hasdriver','hasgunner','hascommander','proxytype','proxyindex','gunnername','primarygunner','primaryobserver','gunneraction','commanding','dontcreateai','enginepower','peaktorque','braketorque','displayname','ispersonTurret'.lower()}
+    keys={'__inherit','__external','__delete','model','maxspeed','transportsoldier','hasdriver','hasgunner','hascommander','proxytype','proxyindex','gunnername','primarygunner','primaryobserver','gunneraction','commanding','dontcreateai','enginepower','peaktorque','braketorque','displayname','ispersonTurret'.lower(),'ace_cargo_space','ace_cargo_size','ace_cargo_hascargo','ace_cargo_canload'}
     out={k.lower():v for k,v in node.items() if k.lower() in keys}
     turrets=next((v for k,v in node.items() if k.lower()=='turrets'),None)
     if isinstance(turrets,dict):out['turrets']={k.lower():vehicle_fields(v) if isinstance(v,dict) else v for k,v in turrets.items()}
@@ -75,6 +76,21 @@ def turret_seats(node):
         total+=int(usable and seat.get('hasgunner',1)>0)+turret_seats(seat.get('turrets',{}))
     return total
 
+def stringtable(raw):
+    root=ET.fromstring(raw);out={}
+    for key in root.iter('Key'):
+        ident=key.get('ID','').lower()
+        if not ident:continue
+        values={child.tag.lower():''.join(child.itertext()).strip() for child in key}
+        original=values.get('english') or values.get('original')
+        out[ident]={'en':original,'ru':values.get('russian') or original}
+    return out
+
+def resolve_names(value,strings):
+    if not isinstance(value,str):return {}
+    if not value.startswith('$'):return {'ru':value,'en':value}
+    return strings.get(value.lstrip('$').lower(),{})
+
 def scan(folders,cache,log):
     paths=[];seen=set()
     for folder in folders:
@@ -87,12 +103,15 @@ def scan(folders,cache,log):
     saved=cache/'config-index.json'
     if saved.exists():
         d=json.loads(saved.read_text('utf8'))
-        if d.get('signature')==signature and d.get('schema')==8:return d
-    index={};addons=[];errors=[]
+        if d.get('signature')==signature and d.get('schema')==9:return d
+    index={};addons=[];errors=[];strings={}
     for i,p in enumerate(paths):
         try:
             contents=entries(p);index.update(contents)
             for name,e in contents.items():
+                if name.endswith('stringtable.xml'):
+                    try:strings.update(stringtable(read(e)))
+                    except (ET.ParseError,ValueError):pass
                 if not name.endswith(('\\config.bin','\\config.cpp')):continue
                 if name.endswith('.cpp') and name[:-4]+'.bin' in contents:continue
                 full=rap(read(e),config=True) if name.endswith('.bin') else text_sqm(read(e),config=True)
@@ -147,8 +166,8 @@ def scan(folders,cache,log):
         if kind!='foot' and ('landvehicle' in ancestors or 'air' in ancestors or 'ship' in ancestors):
             if isinstance(cargo,(int,float)) and isinstance(driver,(int,float)):
                 seats=max(0,int(cargo))+int(driver>0)+turret_seats(c.get('turrets',{}))
-        refs[name]={'sourceModel':model,'mobility':kind,'gameplay':kind!='static' or 'staticweapon' in ancestors,'maxSpeed':c.get('maxspeed'),'capacity':seats,'seatConfig':{k:c[k] for k in ['hasdriver','hasgunner','hascommander','transportsoldier','turrets'] if k in c},'displayName':c.get('displayname'),'enginePower':c.get('enginepower'),'peakTorque':c.get('peaktorque'),'brakeTorque':c.get('braketorque'),'source':'installed-addon-config','configSignature':signature}
-    out={'schema':8,'signature':signature,'classes':refs,'index':index,'errors':errors}
+        refs[name]={'sourceModel':model,'mobility':kind,'gameplay':kind!='static' or 'staticweapon' in ancestors,'maxSpeed':c.get('maxspeed'),'capacity':seats,'seatConfig':{k:c[k] for k in ['hasdriver','hasgunner','hascommander','transportsoldier','turrets'] if k in c},'displayName':c.get('displayname'),'displayNames':resolve_names(c.get('displayname'),strings),'cargoSpace':c.get('ace_cargo_space'),'cargoSize':c.get('ace_cargo_size'),'cargoEnabled':c.get('ace_cargo_hascargo',1)>0,'cargoLoadable':c.get('ace_cargo_canload',1)>0,'enginePower':c.get('enginepower'),'peakTorque':c.get('peaktorque'),'brakeTorque':c.get('braketorque'),'source':'installed-addon-config','configSignature':signature}
+    out={'schema':9,'signature':signature,'classes':refs,'index':index,'errors':errors}
     cache.mkdir(parents=True,exist_ok=True);saved.write_text(json.dumps(out,separators=(',',':')),encoding='utf8');return out
 
 def prepare_mission(store,mission,folders,quality,app,log):
@@ -173,6 +192,9 @@ def prepare_mission(store,mission,folders,quality,app,log):
             raw=json.loads(p.read_text('utf8'));result=native_model(raw,{'sourceModel':job['source']},environment=True)
             name='models/planning/'+mid+'.json';app.write_override(store,name,result)
             catalog['models'][mid]={'file':name,'sourceModel':job['source'],'nativeOrigin':True,'bounds':result['bounds'],'missingProxies':raw.get('missingProxies',[])}
+    from optics import prepare_optics
+    try: catalog['optics']=prepare_optics(index,work,store,app,log)
+    except (OSError,ValueError,subprocess.SubprocessError) as e: log('Оптика пока недоступна: '+str(e))
     app.write_override(store,'models/planning-native-catalog.json',catalog)
     log(f'Готово: {len(catalog["models"])} общих моделей, {len(catalog["parameters"])} классов с параметрами. Ошибок чтения конфигов: {len(data["errors"])}.')
     return catalog

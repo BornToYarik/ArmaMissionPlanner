@@ -1,0 +1,1 @@
+export function routeHeading(segment,fallback=0){const path=[...(segment.from?[segment.from]:[]),...segment.points],b=path.at(-1);for(let i=path.length-2;i>=0;i--){const a=path[i],dx=b[0]-a[0],dy=b[1]-a[1];if(Math.hypot(dx,dy)>.001)return Math.atan2(dx,dy);}return fallback;}

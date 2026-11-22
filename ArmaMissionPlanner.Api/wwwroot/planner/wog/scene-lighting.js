@@ -1,3 +1,4 @@
+import {clipObserverObjects} from '../object-range.mjs';
 import * as THREE from './vendor/three.module.js';
 // Daytime presentation presets, not reconstructed mission weather. The engine's
 // HDR intensities cannot be copied verbatim into Three's diffuse lighting model.
@@ -25,5 +26,5 @@ export function terrainMaterial(options={}){
  return new THREE.MeshLambertMaterial(options);
 }
 export function sceneryMaterial(options={}){
- return new THREE.MeshPhongMaterial({shininess:12,specular:0x181816,...options});
+ return clipObserverObjects(new THREE.MeshPhongMaterial({shininess:12,specular:0x181816,...options}));
 }

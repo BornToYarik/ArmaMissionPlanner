@@ -1,0 +1,3 @@
+<!doctype html><meta charset="utf-8"><title>WOG — проверка видимости</title><style>body{margin:0;background:#132030}iframe{width:100vw;height:100vh;border:0}</style><iframe id="planner" src="/planner/index.html?visibilityAudit=1"></iframe><script type="module">
+const frame=document.querySelector('iframe');frame.onload=async()=>{const response=await fetch('/api/mission/current');if(!response.ok)throw Error('Нет загруженной миссии');frame.contentWindow.postMessage({type:'planning-mission',mission:await response.json(),assignments:{},markers:[],markerCatalog:[]},location.origin);};
+</script>

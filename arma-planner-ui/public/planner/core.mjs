@@ -34,6 +34,7 @@ export function speed(grade, road, p) {
   return (road?p.road:p.offroad)*factor;
 }
 export function travelTime(points, ps, roadAt=()=>false) {
+  points=points.filter((p,i)=>!i||Math.hypot(distance(p,points[i-1]),p[2]-points[i-1][2])>1e-5);
   if(points.length<2)return 0;
   return Math.max(...ps.map(p=>{
     const ds=[], limits=points.map(()=>Infinity);
@@ -87,7 +88,9 @@ function neighbors(g,a,air=false,water=false){const x=a%g.nx,y=Math.floor(a/g.nx
 export function route(g,from,to,ps,mode='free'){
   if(cell(g,from)<0||cell(g,to)<0)throw Error('Точка вне подготовленной карты');
   const air=ps.every(p=>p.name===profiles.air.name),water=ps.every(p=>p.name===profiles.water.name);
-  const start=g.polygons?navigationNode(g,from,air,water):cell(g,from),end=g.polygons?navigationNode(g,to,air,water):cell(g,to);
+  if(!air){from=[from[0],from[1],water?0:gridHeight(g,...from)];to=[to[0],to[1],water?0:gridHeight(g,...to)];}
+  const slope=Math.min(...ps.map(p=>p.slope));
+  const start=g.polygons?navigationNode(g,from,air,water,slope):cell(g,from),end=g.polygons?navigationNode(g,to,air,water,slope):cell(g,to);
   if(start<0||end<0)throw Error('Точка внутри препятствия или проход уже шага сетки');
   if(!air&&(g.blocked?.[start]||g.blocked?.[end]))throw Error('Точка внутри препятствия');
   const roadMode=mode==='road';if(roadMode&&!g.roads?.some(Boolean))throw Error('Нет данных дорожной сети');
@@ -111,16 +114,19 @@ export function route(g,from,to,ps,mode='free'){
   // Keep sampled slopes and obstacles. Do not smooth a path through buildings.
   if(distance(from,path[0])>.001)path.unshift(from);else path[0]=from;
   if(distance(to,path.at(-1))>.001)path.push(to);else path[path.length-1]=to;
-  path=straightenRoute(g,path,ps,roadMode);
-  return {points:path,seconds:travelTime(sampleRouteHeights(g,path),ps,(a,b)=>g.roads?.[cell(g,a)]&&g.roads?.[cell(g,b)]),mode,resolution:g.step};
+  const original=path;path=air?path:straightenRoute(g,path,ps,roadMode);
+  const timing=p=>travelTime(air?p:sampleRouteHeights(g,p),ps,(a,b)=>g.roads?.[cell(g,a)]&&g.roads?.[cell(g,b)]);
+  let seconds=timing(path);if(!Number.isFinite(seconds)){path=original;seconds=timing(path);}
+  if(!Number.isFinite(seconds))throw Error('Не найден проходимый участок с допустимым уклоном');
+  return {points:path,seconds,mode,resolution:g.step};
 }
 // Preserve a straight XY line while sampling the hills it actually crosses.
 export function gridHeight(g,x,y){const fx=Math.max(0,Math.min(g.nx-1,(x-g.x)/g.step)),fy=Math.max(0,Math.min(g.ny-1,(y-g.y)/g.step)),ix=Math.floor(fx),iy=Math.floor(fy),jx=Math.min(ix+1,g.nx-1),jy=Math.min(iy+1,g.ny-1),a=fx-ix,b=fy-iy;return (g.heights[iy*g.nx+ix]*(1-a)+g.heights[iy*g.nx+jx]*a)*(1-b)+(g.heights[jy*g.nx+ix]*(1-a)+g.heights[jy*g.nx+jx]*a)*b;}
 export function sampleRouteHeights(g,path){
  const out=[];
 
- for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],n=Math.max(1,Math.ceil(distance(a,b)/(g.step/2)));for(let j=0;j<n;j++){const t=j/n,x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t;out.push([x,y,j?gridHeight(g,x,y):a[2]]);}}
- if(path.length)out.push(path.at(-1));return out;
+ for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],n=Math.max(1,Math.ceil(distance(a,b)/(g.step/2)));for(let j=0;j<n;j++){const t=j/n,x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t;out.push([x,y,gridHeight(g,x,y)]);}}
+ if(path.length){const b=path.at(-1);out.push([b[0],b[1],gridHeight(g,...b)]);}return out;
 }
 export function straightenRoute(g,path,ps,roadMode=false){
  if(path.length<3)return path;
@@ -128,11 +134,11 @@ export function straightenRoute(g,path,ps,roadMode=false){
   for(let i=0;i<=n;i++){const f=i/n,x=a[0]+(b[0]-a[0])*f,y=a[1]+(b[1]-a[1])*f,k=cell(g,[x,y]);
    if(k<0||g.blocked[k]||!Number.isFinite(g.heights[k])||g.heights[k]<0)return null;
    if(last>=0&&k!==last){const ax=last%g.nx,ay=Math.floor(last/g.nx),bx=k%g.nx,by=Math.floor(k/g.nx);if(ax!==bx&&ay!==by&&(g.blocked[ay*g.nx+bx]||g.blocked[by*g.nx+ax]))return null;}
-   out.push([x,y,i===0?a[2]:i===n?b[2]:g.heights[k]]);last=k;
+   out.push([x,y,gridHeight(g,x,y)]);last=k;
   }return out;};
  const weighted=points=>{let cost=0;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],d=distance(a,b);if(!d)continue;const road=g.roads?.[cell(g,a)]&&g.roads?.[cell(g,b)];const v=Math.min(...ps.map(p=>speed((b[2]-a[2])/d,road,p)));if(!v)return Infinity;cost+=d/v*(roadMode&&!road?4:1);}return cost;};
  const out=[path[0]];let at=0;
- while(at<path.length-1){let next=at+1;for(let j=Math.min(path.length-1,at+40);j>at+1;j--){const samples=sample(path[at],path[j]);if(samples&&weighted(samples)<=weighted(path.slice(at,j+1))*1.04){next=j;break;}}out.push(path[next]);at=next;}
+ while(at<path.length-1){let next=at+1;for(let j=Math.min(path.length-1,at+40);j>at+1;j--){const samples=sample(path[at],path[j]);if(samples&&Number.isFinite(weighted(samples))&&weighted(samples)<=weighted(sampleRouteHeights(g,path.slice(at,j+1)))*1.04){next=j;break;}}out.push(path[next]);at=next;}
  return out;
 }
 export function reachable(g,starts,seconds){

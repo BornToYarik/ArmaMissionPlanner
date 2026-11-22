@@ -67,7 +67,7 @@ public class Program {
   foreach(var job in jobs.EnumerateArray()) {
    string output=job.GetProperty("output").GetString(),source=job.GetProperty("source").GetString();
    try {
-    var model=ReadModel(source);var lod=job.TryGetProperty("lod",out var exact)?model.Lods.FirstOrDefault(l=>Math.Abs(l.Resolution-exact.GetDouble())<.0001)??Choose(model,12000):Choose(model,job.TryGetProperty("budget",out var budget)?budget.GetInt32():12000);var positions=new List<double>();var uvs=new List<double>();var triangles=new List<int[]>();var textures=new List<string>();
+    var model=ReadModel(source);var lod=job.TryGetProperty("highestDetail",out var highest)&&highest.GetBoolean()?model.Lods.Where(l=>l.Resolution>=0&&l.Resolution<1000&&Tri(l)>0).OrderBy(l=>l.Resolution).First():job.TryGetProperty("lod",out var exact)?model.Lods.FirstOrDefault(l=>Math.Abs(l.Resolution-exact.GetDouble())<.0001)??Choose(model,12000):Choose(model,job.TryGetProperty("budget",out var budget)?budget.GetInt32():12000);var positions=new List<double>();var uvs=new List<double>();var triangles=new List<int[]>();var textures=new List<string>();
     var reference=job.TryGetProperty("referenceLod",out var refLod)?model.Lods.FirstOrDefault(l=>Math.Abs(l.Resolution-refLod.GetDouble())<.0001)??lod:lod;
     var proxyIds=(reference.RawProxies??Array.Empty<Proxy>()).Select(p=>p.SectionIndex).ToHashSet();
     var originalVertices=reference.Sections.Select((s,i)=>(s,i)).Where(p=>!proxyIds.Contains(p.i)&&(p.s.TextureIndex>=0||p.s.MaterialIndex>=0)).SelectMany(p=>p.s.GetFaces(reference.Polygons.Faces)).SelectMany(f=>f.VertexIndices).Distinct().Select(i=>reference.Vertices[i]).ToArray();
