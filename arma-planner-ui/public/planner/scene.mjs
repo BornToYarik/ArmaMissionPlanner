@@ -1,4 +1,5 @@
 import {shortRole,sideColor,initialVehicleSide} from './planning-units.mjs';
+import {boardingGhostMesh} from './planning-ghost.mjs';
 import {ViewshedSurface} from './viewshed-surface.mjs';
 import {terrainGridHit} from './wog/terrain-ray.js';
 import {coarseNormalAt} from './wog/terrain-join.js';
@@ -182,7 +183,7 @@ export class PlanningScene {
   boardingPreview(units,p){
     const key=units.map(u=>u.id).join(',');
     if(!p||!units.length){if(this.boardingGhost){this.scene.remove(this.boardingGhost);for(const m of this.boardingGhost.children)for(const mat of [m.material].flat())mat.dispose();this.boardingGhost=null;}return;}
-    if(this.boardingGhost?.userData.key!==key){this.boardingPreview([],null);this.boardingGhost=new T.Group();this.boardingGhost.userData.key=key;for(const u of units){const m=u.mesh.clone();m.material=[u.mesh.material].flat().map(mat=>{const copy=mat.clone();copy.transparent=true;copy.opacity=.5;copy.depthWrite=false;return copy;});if(!Array.isArray(u.mesh.material))m.material=m.material[0];this.boardingGhost.add(m);}this.scene.add(this.boardingGhost);}
+    if(this.boardingGhost?.userData.key!==key){this.boardingPreview([],null);this.boardingGhost=new T.Group();this.boardingGhost.userData.key=key;for(const u of units)this.boardingGhost.add(boardingGhostMesh(u.mesh));this.scene.add(this.boardingGhost);}
     const cols=Math.ceil(Math.sqrt(units.length));this.boardingGhost.children.forEach((m,i)=>{const x=p[0]+(i%cols-(cols-1)/2)*1.4,y=p[1]+Math.floor(i/cols)*1.4;m.position.copy(this.vec([x,y,this.surfaceHeight(x,y)]));m.visible=true;});
   }
   rebuildLabelState(){
