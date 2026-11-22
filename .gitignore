@@ -4,3 +4,10 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 *.pbo
+.test-local/
+.build-cache/
+planner-local.*
+test-mission.local.json
+**/__pycache__/
+**/node_modules/
+*.local.json

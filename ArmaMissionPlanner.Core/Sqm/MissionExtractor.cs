@@ -58,6 +58,7 @@ public static class MissionExtractor
         if (entities != null)
         {
             CollectEntitiesRecursive(entities, mission, archive);
+            mission.PlanningScene = PlanningSceneExtractor.Extract(entities);
         }
 
         if (archive != null)

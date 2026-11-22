@@ -1,0 +1,160 @@
+using BIS.Core.Math;
+using BIS.Core.Streams;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+
+namespace BIS.P3D.MLOD
+{
+    public class P3DM_LOD : ILevelOfDetail
+    {
+        private int Flags { get; set; }
+        public int Version { get; private set; }
+        public Point[] Points { get; set; }
+        public Vector3P[] Normals { get; set; }
+        public Face[] Faces { get; set; }
+        public LinkedList<Tagg> Taggs { get; private set; }
+        public float Resolution { get; private set; }
+        public string[] Textures => Faces.Select(f => f.Texture).Distinct().ToArray();
+        public string[] Selections => NamedSelections.Select(ns => ns.Name).ToArray();
+        public string[] Proxies => new string[0]; // MLOD proxies structure differs, returning empty
+
+        public string Name => Resolution.ToString("F1");
+
+        Vector3P[] ILevelOfDetail.Points => Points.Select(p => (Vector3P)p).ToArray();
+
+        public IEnumerable<Tuple<string, string>> NamedProperties => Taggs.OfType<PropertyTagg>().Select(p => new Tuple<string, string>(p.PropertyName.Trim('\0', ' '), p.Value.Trim('\0', ' ')));
+
+        public int FaceCount => Faces.Length;
+
+        public IEnumerable<INamedSelection> NamedSelections => Taggs.OfType<NamedSelectionTagg>().Select(p => new NamedSelectionInfos(this, p));
+
+        public uint VertexCount => (uint)Points.Length;
+
+        public P3DM_LOD(BinaryReaderEx input)
+        {
+            Read(input);
+        }
+
+        public P3DM_LOD(float resolution, Point[] points, Vector3P[] normals, Face[] faces, IEnumerable<Tagg> taggs)
+        {
+            Version = 0x100;
+            Points = points;
+            Normals = normals;
+            Faces = faces;
+            Taggs = new LinkedList<Tagg>(taggs);
+            Resolution = resolution;
+        }
+
+        public void Read(BinaryReaderEx input)
+        {
+            if (input.ReadAscii(4) != "P3DM")
+                throw new ArgumentException("Only P3DM LODs are supported");
+
+            var headerSize = input.ReadInt32();
+            Version = input.ReadInt32();
+
+            if (headerSize != 28 || Version != 0x100)
+                throw new ArgumentOutOfRangeException("Unknown P3DM version");
+            var nPoints = input.ReadInt32();
+            var nNormals = input.ReadInt32();
+            var nFaces = input.ReadInt32();
+
+            Flags = input.ReadInt32();
+            Points = new Point[nPoints];
+            Normals = new Vector3P[nNormals];
+            Faces = new Face[nFaces];
+
+            // Bulk-read Points: 3 floats + 1 int = 16 bytes each
+            if (nPoints > 0)
+            {
+                var pointBytes = input.ReadBytes(nPoints * 16);
+                for (int i = 0; i < nPoints; i++)
+                {
+                    int offset = i * 16;
+                    Points[i] = new Point(
+                        new Vector3P(
+                            BitConverter.ToSingle(pointBytes, offset),
+                            BitConverter.ToSingle(pointBytes, offset + 4),
+                            BitConverter.ToSingle(pointBytes, offset + 8)),
+                        (PointFlags)BitConverter.ToInt32(pointBytes, offset + 12));
+                }
+            }
+
+            // Bulk-read Normals: 3 floats = 12 bytes each
+            if (nNormals > 0)
+            {
+                var normalBytes = input.ReadBytes(nNormals * 12);
+                for (int i = 0; i < nNormals; i++)
+                {
+                    int offset = i * 12;
+                    Normals[i] = new Vector3P(
+                        BitConverter.ToSingle(normalBytes, offset),
+                        BitConverter.ToSingle(normalBytes, offset + 4),
+                        BitConverter.ToSingle(normalBytes, offset + 8));
+                }
+            }
+
+            for (int i = 0; i < nFaces; ++i)
+            {
+                Faces[i] = new Face(input);
+            }
+
+            if (input.ReadAscii(4) != "TAGG")
+                throw new FormatException("TAGG expected");
+
+            Taggs = new LinkedList<Tagg>();
+            Tagg mlodTagg;
+            do
+            {
+                mlodTagg = Tagg.ReadTagg(input, nPoints, Faces);
+                Debug.Assert(mlodTagg.DataSize == mlodTagg.ComputeDataSize());
+                Taggs.AddLast(mlodTagg);
+            }
+            while (!(mlodTagg is EOFTagg));
+
+            Resolution = input.ReadSingle();
+        }
+
+        public void Write(BinaryWriterEx output)
+        {
+            var nPoints = Points.Length;
+            var nNormals = Normals.Length;
+            var nFaces = Faces.Length;
+
+            output.WriteAscii("P3DM", 4);
+            output.Write(28); //headerSize
+            output.Write(Version);
+            output.Write(nPoints);
+            output.Write(nNormals);
+            output.Write(nFaces);
+            output.Write(Flags);
+            for (int i = 0; i < nPoints; ++i)
+                Points[i].Write(output);
+            for (int index = 0; index < nNormals; ++index)
+                Normals[index].Write(output);
+            for (int index = 0; index < nFaces; ++index)
+                Faces[index].Write(output);
+            output.WriteAscii("TAGG", 4);
+            foreach (Tagg tagg in Taggs)
+                tagg.Write(output);
+            output.Write(Resolution);
+        }
+
+        public IEnumerable<string> GetTextures()
+        {
+            return Faces.Select(f => f.Texture).Distinct();
+        }
+
+        public IEnumerable<string> GetMaterials()
+        {
+            return Faces.Select(f => f.Material).Distinct();
+        }
+
+        public LodHashId GetModelHashId()
+        {
+            return LodHashId.Compute(Points);
+        }
+    }
+}

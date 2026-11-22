@@ -27,8 +27,17 @@ builder.Services.AddSingleton<ArmaAssetsCatalogService>();
 var app = builder.Build();
 
 app.UseCors();
+PlanningAssets.Map(app);
+PlanningHistory.Map(app);
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        if (context.Context.Request.Path.StartsWithSegments("/planner"))
+            context.Context.Response.Headers.CacheControl = "no-cache";
+    }
+});
 
 static string? FindExternalDataDir(string startPath)
 {
@@ -175,7 +184,9 @@ app.MapGet("/api/maps/{worldName}/{z:int}/{x:int}/{y:int}.png", (string worldNam
 
 app.MapFallbackToFile("index.html");
 
-app.Run("http://localhost:5123");
+var plannerPort = int.TryParse(Environment.GetEnvironmentVariable("WOG_PLANNER_PORT"), out var requestedPort)
+    && requestedPort is > 1023 and <= 65535 ? requestedPort : 5123;
+app.Run($"http://127.0.0.1:{plannerPort}");
 
 public record ArmaMarkerDef(
     int SwtIdx,

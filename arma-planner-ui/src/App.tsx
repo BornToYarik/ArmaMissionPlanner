@@ -1,3 +1,4 @@
+import Planning3D from './Planning3D';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import { toPng } from 'html-to-image';
@@ -427,6 +428,8 @@ export default function App() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   const bookingTableRef = useRef<HTMLDivElement>(null);
+  const [planning3d, setPlanning3d] = useState(false);
+  const [planningStarted, setPlanningStarted] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const planLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -765,7 +768,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'map' || !mission || !mapContainerRef.current) return;
+    if (planning3d || activeTab !== 'map' || !mission || !mapContainerRef.current) return;
 
     if (leafletMapRef.current) {
       leafletMapRef.current.remove();
@@ -1196,7 +1199,7 @@ export default function App() {
       map.remove();
       leafletMapRef.current = null;
     };
-  }, [activeTab, mission, mapConfig, tileAlignMode, markerCatalog, colorCatalog]);
+  }, [planning3d, activeTab, mission, mapConfig, tileAlignMode, markerCatalog, colorCatalog]);
 
   useEffect(() => {
     const layer = planLayerGroupRef.current;
@@ -1789,7 +1792,9 @@ export default function App() {
                 )}
 
                 {/* ВКЛАДКА 2: ТАКТИЧЕСКАЯ КАРТА, ТЕХНИКА И SWT MARKERS */}
-                {activeTab === 'map' && (
+                {activeTab === 'map' && <div className="flex gap-2 mb-4"><button className="px-4 py-2 rounded bg-slate-700" onClick={() => setPlanning3d(false)}>2D · существующий план</button><button className="px-4 py-2 rounded bg-emerald-800" onClick={() => {setPlanningStarted(true);setPlanning3d(true);}}>3D · маршруты и видимость</button></div>}
+                <div style={{display: activeTab === 'map' && planning3d ? 'block' : 'none'}}>{planningStarted && <Planning3D key={mission.name + mission.worldName} mission={mission} assignments={unitAssignments} markers={planMarkers} markerCatalog={markerCatalog} />}</div>
+                {activeTab === 'map' && !planning3d && (
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                       <div className="lg:col-span-3 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">

@@ -1,0 +1,107 @@
+.actor-label{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;border:1px solid #ffffff99;border-left:3px solid var(--side-color,#aaa);background:#24323bea;color:white;border-radius:4px;box-shadow:0 1px 4px #0006;text-align:left;padding:6px 8px;line-height:1.2;z-index:2}
+.actor-label strong{font-size:12px;display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.actor-label span{font-size:12px;display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#d5e1e9}
+.actor-label::after{content:'';position:absolute;top:100%;left:50%;height:10px;width:1px;background:var(--side-color,#ddd)}
+.actor-label.selected{z-index:5;border-color:#f3c96c;background:#344959}
+.actor-label.dead{opacity:.65}
+.actor-label.cluster{border-radius:16px;padding:7px 11px;background:#263944f0}
+.actor-label.cluster strong{font-size:12px}
+.actor-label:hover{background:#466679}
+.actor-label strong{font-size:12px}
+.actor-label span{font-size:12px}
+
+
+/* Squad cards retain all names; overflow is scrollable, never truncated. */
+.actor-label{padding:5px 7px}
+.actor-label.cluster{border-radius:5px;padding:6px 8px}
+.actor-label.mixed{border-top:3px solid transparent;border-image:linear-gradient(90deg,#318ac7 50%,#c84b4b 50%) 1}
+.actor-label strong{font-size:12px}
+.actor-label .label-members{display:block;max-height:calc(100% - 17px);overflow:auto;white-space:normal;scrollbar-width:thin;margin-top:3px;overscroll-behavior:contain}
+.actor-label .label-squad{display:block;white-space:normal;margin-top:4px;border-left:2px solid var(--squad-color);padding-left:5px}
+.actor-label .label-squad b{font-size:12px;color:#fff}
+.actor-label .label-squad span{white-space:normal;overflow:visible;text-overflow:clip;font-size:12px;line-height:1.35;margin-top:2px;overflow-wrap:anywhere}
+.actor-label:not(.cluster) .label-squad{margin-top:0;border:0;padding:0}
+.actor-label:not(.cluster) .label-squad b{display:none}
+.actor-label::after{display:none}
+.label-leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+
+/* Compact tactical symbols; details live in the inspector. */
+.actor-label.tactical-marker{transform:translate(-50%,-50%);display:flex;align-items:center;gap:4px;padding:0 5px 0 0;border:0;border-radius:3px;border-image:none;background:transparent;color:white;box-shadow:none;line-height:1;white-space:nowrap;overflow:visible;opacity:1}
+
+.actor-label.tactical-marker strong{font-size:12px;line-height:18px;padding:1px 4px;background:#18252dc4;border-radius:2px;text-shadow:0 1px 2px #000;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+
+.actor-label.tactical-marker .tactical-icon{flex:0 0 25px;width:25px;height:25px;fill:#18252dd9;stroke:var(--side-color);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 1px white) drop-shadow(0 1px 2px #000)}
+
+.actor-label.tactical-marker .dot{fill:var(--side-color);stroke:#f3f5f6;stroke-width:1.3}
+
+.actor-label.tactical-marker.near .tactical-icon{flex-basis:18px;width:18px;height:18px}
+
+.actor-label.tactical-marker:hover strong,.actor-label.tactical-marker.selected strong{background:#101eec00;outline:1px solid #fff;background:#15232fed}
+
+.actor-label.tactical-marker.selected .tactical-icon{filter:drop-shadow(0 0 2px #ffe7a0)}
+
+.actor-label.tactical-marker:focus-visible{outline:2px solid white;outline-offset:3px}
+
+.label-leaders line{opacity:1;stroke-linecap:round}
+
+
+.tactical-marker .marker-count{flex-shrink:0;font-size:12px;color:white;background:#18252de8;padding:3px 4px;border-radius:2px}
+.tactical-marker strong{min-width:0;flex:1}
+.tactical-marker.squad strong{padding-right:0}
+
+
+.label-leaders .squad-member-point{opacity:.95}
+
+.member-nickname{position:absolute;z-index:2;pointer-events:auto;transform:translate(-50%,-50%);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;border-left:2px solid var(--side-color);border-radius:2px;background:rgba(25,32,36,.65);color:#fff;font:12px/15px Roboto,Arial,sans-serif;padding:1px 4px;text-shadow:0 1px 2px #000;cursor:pointer}
+
+.member-nickname:hover,.member-nickname:focus-visible{background:rgba(25,32,36,.92);outline:1px solid var(--side-color)}
+
+
+.member-nickname.dead{opacity:.65}
+
+
+.tactical-marker strong,.member-nickname{color:var(--caption-color,var(--side-color));}
+
+
+/* Replay callouts always show complete names. */
+.actor-label.tactical-marker strong,.member-nickname{max-width:none;overflow:visible;text-overflow:clip;white-space:nowrap;flex-shrink:0;}
+
+
+.actor-label.tactical-marker.infantry .tactical-icon{display:none;}
+
+
+.actor-label.tactical-marker.dead strong,.member-nickname.dead{color:#000}
+
+
+.actor-label.tactical-marker.squad.inspected-squad strong{outline:2px solid #fff2be;outline-offset:1px;box-shadow:0 0 0 4px #17222c9c;background:#15232ff2}
+.actor-label.tactical-marker.squad.inspected-squad .tactical-icon{filter:drop-shadow(0 0 2px #fff2be) drop-shadow(0 0 1px #fff2be)}
+.actor-label.tactical-marker .stationary-note{position:absolute;top:calc(50% + 10px);left:0;background:#18252dc4;padding:1px 4px;border-radius:2px}
+.actor-label.tactical-marker .isolation-note{position:absolute;top:calc(50% + 10px);left:0;background:#18252dc4;padding:1px 4px;border-radius:2px}
+.actor-label.tactical-marker .stationary-note~.isolation-note{top:calc(50% + 27px)}
+
+
+/* Keep the common dark label background, but give charcoal text a light halo. */
+.actor-label.dead,.member-nickname.dead{opacity:1}
+
+.actor-label.tactical-marker.dead strong,.member-nickname.dead{color:#25282c;font-weight:700;text-shadow:-1px 0 #e1e4e5,1px 0 #e1e4e5,0 -1px #e1e4e5,0 1px #e1e4e5}
+.actor-label.selected strong{outline:1px solid #ffe39b;outline-offset:2px}
+
+body,button,input,select,textarea,.clock,.kill-badge,.member-nickname,.town-label,.map-marker-popup strong,.map-marker-popup .marker-author,.stationary-note,.isolation-note,#summary-grid b{font-family:"Times New Roman",Times,serif}
+
+.actor-label.tactical-marker strong,.actor-label.tactical-marker .marker-count{height:20px;min-height:20px;line-height:18px;padding:1px 4px;display:flex;align-items:center;box-sizing:border-box}
+
+.actor-label.tactical-marker .marker-count{justify-content:center;min-width:18px}
+
+.actor-label.tactical-marker.squad strong{padding-right:4px}
+
+.actor-label.tactical-marker .garage-icon{display:block;flex:0 0 34px;width:34px;height:24px;margin:0;background:var(--side-color);mask:var(--garage-icon) center/contain no-repeat;-webkit-mask:var(--garage-icon) center/contain no-repeat;filter:drop-shadow(0 1px 1px #000b)}
+
+.actor-label.tactical-marker.near .garage-icon{flex-basis:30px;width:30px;height:22px}
+
+.actor-label.tactical-marker.dead strong,.member-nickname.dead{color:#757a80;text-shadow:0 1px 1px #0007;font-weight:600}
+
+.entity-row .state,.kill-badge,.marker-count{flex-shrink:0}
+
+.actor-label.tactical-marker strong{flex:0 1 auto;min-width:0}
+.actor-label.tactical-marker .marker-count{flex:0 0 auto}

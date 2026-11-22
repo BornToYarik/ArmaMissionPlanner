@@ -16,6 +16,7 @@ public class MissionInfo
     public List<SquadGroup> Groups { get; set; } = new();
     public List<MissionVehicle> Vehicles { get; set; } = new();
     public List<MissionMarker> Markers { get; set; } = new();
+    public List<PlanningObject> PlanningScene { get; set; } = new();
     public List<MissionScriptFile> ScriptFiles { get; set; } = new();
     public List<ValidationIssue> ValidationReport { get; set; } = new();
 }

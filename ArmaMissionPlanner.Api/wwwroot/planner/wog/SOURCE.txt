@@ -1,0 +1,3 @@
+WOG-Replay3D main 522fcf4fddd9c4f05d756c2ee347bf9b1bd623ec, verified 2026-11-22.
+Rendering modules are copied unchanged except label-clusters.js planning names.
+Planner adapters reuse the final terrain intersection, LOD, lighting, models and navigation formulas.
