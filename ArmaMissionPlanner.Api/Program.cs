@@ -30,20 +30,45 @@ app.UseCors();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+static string? FindExternalDataDir(string startPath)
+{
+    var dir = new DirectoryInfo(startPath);
+    while (dir != null)
+    {
+        var candidate = Path.Combine(dir.FullName, "ArmaMissionPlannerData");
+        if (Directory.Exists(candidate))
+            return candidate;
+
+        dir = dir.Parent;
+    }
+    return null;
+}
 // Инициализируем каталог иконок при старте
 var assetsCatalog = app.Services.GetRequiredService<ArmaAssetsCatalogService>();
 assetsCatalog.Initialize(builder.Environment.ContentRootPath);
 
+
+var externalDataDir = FindExternalDataDir(builder.Environment.ContentRootPath)
+                      ?? FindExternalDataDir(AppContext.BaseDirectory);
+
+Console.WriteLine($"[Startup] Папка данных ArmaMissionPlannerData: {externalDataDir ?? "НЕ НАЙДЕНА"}");
+
 string? ResolveMapDirectory(string worldName)
 {
     var safeWorld = Path.GetFileName(worldName.ToLowerInvariant());
-    var candidates = new[]
+    var candidates = new List<string>();
+
+    if (externalDataDir != null)
     {
-        Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "maps", safeWorld)),
-        Path.Combine(builder.Environment.ContentRootPath, "maps", safeWorld),
-        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "maps", safeWorld),
-        Path.Combine(AppContext.BaseDirectory, "maps", safeWorld)
-    };
+        // 1. F:\projects\ArmaMissionPlannerData\maps\<worldName>
+        candidates.Add(Path.Combine(externalDataDir, "maps", safeWorld));
+        // 2. На случай если карты лежат сразу в F:\projects\ArmaMissionPlannerData\<worldName>
+        candidates.Add(Path.Combine(externalDataDir, safeWorld));
+    }
+
+    // Запасные старые пути
+    candidates.Add(Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "maps", safeWorld)));
+    candidates.Add(Path.Combine(builder.Environment.ContentRootPath, "maps", safeWorld));
 
     return candidates.FirstOrDefault(Directory.Exists);
 }
@@ -91,6 +116,16 @@ app.MapGet("/api/mission/image", (string path, MissionStateService state) =>
 app.MapGet("/api/assets/catalog", (ArmaAssetsCatalogService catalog) =>
 {
     return Results.Ok(catalog.DisplayNames);
+});
+
+// 4b. Полный список маркеров и цветов из дампа Arma 3 (CfgMarkers и CfgMarkerColors)
+app.MapGet("/api/assets/markers", (ArmaAssetsCatalogService catalog) =>
+{
+    return Results.Ok(new
+    {
+        markers = catalog.Markers,
+        colors = catalog.MarkerColors
+    });
 });
 
 // 5. Универсальная отдача PNG-иконки по классу оружия/снаряжения/техники/маркера!
@@ -142,6 +177,23 @@ app.MapFallbackToFile("index.html");
 
 app.Run("http://localhost:5123");
 
+public record ArmaMarkerDef(
+    int SwtIdx,
+    string Id,
+    string Name,
+    bool HasIcon,
+    bool IsFullColor,
+    bool IsPureBlack,
+    string DefaultColorHex
+);
+
+public record ArmaColorDef(
+    int SwtIdx,
+    string ArmaClass,
+    string Name,
+    string Hex
+);
+
 // Сервис каталога иконок и названий классов из arma_assets_dump_fixed.json
 public class ArmaAssetsCatalogService
 {
@@ -150,13 +202,15 @@ public class ArmaAssetsCatalogService
     private readonly Dictionary<string, string> _classToIconFile = new(StringComparer.OrdinalIgnoreCase);
     // className -> DisplayName (например "rhs_weap_ak74m" -> "АК-74М")
     public Dictionary<string, string> DisplayNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<ArmaMarkerDef> Markers { get; } = new();
+    public List<ArmaColorDef> MarkerColors { get; } = new();
 
     public void Initialize(string contentRoot)
     {
         // Ищем папку с PNG иконками
         var iconDirCandidates = new[]
         {
-            Path.GetFullPath(Path.Combine(contentRoot, "..", "arma-icons")),
+            Path.GetFullPath(Path.Combine(contentRoot, "../..","ArmaMissionPlannerData", "arma-icons")),
             Path.GetFullPath(Path.Combine(contentRoot, "..", "arma-planner-ui", "public", "arma-icons")),
             Path.Combine(contentRoot, "arma-icons"),
             Path.Combine(contentRoot, "wwwroot", "arma-icons")
@@ -166,7 +220,8 @@ public class ArmaAssetsCatalogService
         // Ищем arma_assets_dump_fixed.json
         var jsonCandidates = new[]
         {
-            Path.GetFullPath(Path.Combine(contentRoot, "..", "arma_assets_dump_fixed.json")),
+            Path.GetFullPath(Path.Combine(contentRoot, "../..","ArmaMissionPlannerData", "arma-icons", "arma_assets_dump_fixed.json")),
+            Path.GetFullPath(Path.Combine(contentRoot, "../..","ArmaMissionPlannerData", "arma_assets_dump_fixed.json")),
             Path.GetFullPath(Path.Combine(contentRoot, "..", "arma-icons", "arma_assets_dump_fixed.json")),
             Path.GetFullPath(Path.Combine(contentRoot, "..", "arma-planner-ui", "public", "arma_assets_dump_fixed.json")),
             Path.GetFullPath(Path.Combine(contentRoot, "..", "arma-planner-ui", "src", "arma_assets_dump_fixed.json")),
@@ -191,6 +246,7 @@ public class ArmaAssetsCatalogService
                     // [0] = Markers ([cls, name, iconPath, color])
                     if (root.GetArrayLength() > 0 && root[0].ValueKind == JsonValueKind.Array)
                     {
+                        int mIdx = 0;
                         foreach (var el in root[0].EnumerateArray())
                         {
                             if (el.ValueKind == JsonValueKind.Array && el.GetArrayLength() >= 3)
@@ -199,7 +255,44 @@ public class ArmaAssetsCatalogService
                                 var disp = el[1].GetString() ?? "";
                                 var paaPath = el[2].GetString() ?? "";
                                 RegisterAsset(cls, disp, paaPath);
+
+                                var (defHex, isFullColor) = ParseMarkerDefaultColor(cls, el.GetArrayLength() >= 4 ? el[3] : default);
+                                bool hasIcon = ResolveIconFilePath(cls) != null;
+                                bool isPureBlack = cls.StartsWith("group_", StringComparison.OrdinalIgnoreCase);
+
+                                Markers.Add(new ArmaMarkerDef(
+                                    mIdx,
+                                    cls,
+                                    string.IsNullOrWhiteSpace(disp) ? cls : disp,
+                                    hasIcon,
+                                    isFullColor,
+                                    isPureBlack,
+                                    defHex
+                                ));
                             }
+                            mIdx++;
+                        }
+                    }
+
+                    // [1] = MarkerColors ([colorClass, displayName, rgbaArray])
+                    if (root.GetArrayLength() > 1 && root[1].ValueKind == JsonValueKind.Array)
+                    {
+                        int cIdx = 0;
+                        foreach (var el in root[1].EnumerateArray())
+                        {
+                            if (el.ValueKind == JsonValueKind.Array && el.GetArrayLength() >= 3)
+                            {
+                                var colorCls = el[0].GetString() ?? "";
+                                var disp = el[1].GetString() ?? "";
+                                var hex = ParseColorArrayToHex(colorCls, el[2]);
+                                MarkerColors.Add(new ArmaColorDef(
+                                    cIdx,
+                                    colorCls,
+                                    $"{cIdx:D2}. {disp} ({colorCls})",
+                                    hex
+                                ));
+                            }
+                            cIdx++;
                         }
                     }
 
@@ -218,13 +311,70 @@ public class ArmaAssetsCatalogService
                         }
                     }
                 }
-                Console.WriteLine($"[ArmaAssets] Загружено классов: {_classToIconFile.Count}, папка иконок: {_iconsDir ?? "не найдена"}");
+                Console.WriteLine($"[ArmaAssets] Загружено классов: {_classToIconFile.Count}, маркеров: {Markers.Count}, цветов: {MarkerColors.Count}, папка иконок: {_iconsDir ?? "не найдена"}");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ArmaAssets] Ошибка чтения JSON: {ex.Message}");
             }
         }
+    }
+
+    private static (string Hex, bool IsFullColor) ParseMarkerDefaultColor(string cls, JsonElement colorEl)
+    {
+        if (colorEl.ValueKind == JsonValueKind.Array && colorEl.GetArrayLength() >= 2)
+        {
+            var rawStr = colorEl.ToString();
+            if (rawStr.Contains("Map_BLUFOR", StringComparison.OrdinalIgnoreCase)) return ("#004d99", false);
+            if (rawStr.Contains("Map_OPFOR", StringComparison.OrdinalIgnoreCase)) return ("#800000", false);
+            if (rawStr.Contains("Map_Independent", StringComparison.OrdinalIgnoreCase)) return ("#008000", false);
+            if (rawStr.Contains("Civilian", StringComparison.OrdinalIgnoreCase)) return ("#660080", false);
+            if (rawStr.Contains("Map_Unknown", StringComparison.OrdinalIgnoreCase)) return ("#b39900", false);
+
+            if (colorEl.GetArrayLength() >= 3 &&
+                colorEl[0].TryGetDouble(out double r) &&
+                colorEl[1].TryGetDouble(out double g) &&
+                colorEl[2].TryGetDouble(out double b))
+            {
+                if (r >= 0.99 && g >= 0.99 && b >= 0.99 && !cls.Equals("White", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ("#ffffff", true);
+                }
+
+                int ri = Math.Clamp((int)Math.Round(r * 255), 0, 255);
+                int gi = Math.Clamp((int)Math.Round(g * 255), 0, 255);
+                int bi = Math.Clamp((int)Math.Round(b * 255), 0, 255);
+                return ($"#{ri:x2}{gi:x2}{bi:x2}", false);
+            }
+        }
+        return ("#000000", false);
+    }
+
+    private static string ParseColorArrayToHex(string colorCls, JsonElement colorEl)
+    {
+        if (colorCls.Equals("Default", StringComparison.OrdinalIgnoreCase)) return "#000000";
+        if (colorCls.Equals("colorBLUFOR", StringComparison.OrdinalIgnoreCase)) return "#1d4ed8";
+        if (colorCls.Equals("ColorWEST", StringComparison.OrdinalIgnoreCase)) return "#004d99";
+        if (colorCls.Equals("colorOPFOR", StringComparison.OrdinalIgnoreCase)) return "#b91c1c";
+        if (colorCls.Equals("ColorEAST", StringComparison.OrdinalIgnoreCase)) return "#800000";
+        if (colorCls.Equals("colorIndependent", StringComparison.OrdinalIgnoreCase)) return "#15803d";
+        if (colorCls.Equals("ColorGUER", StringComparison.OrdinalIgnoreCase)) return "#008000";
+        if (colorCls.Equals("colorCivilian", StringComparison.OrdinalIgnoreCase)) return "#7e22ce";
+        if (colorCls.Equals("ColorCIV", StringComparison.OrdinalIgnoreCase)) return "#660080";
+        if (colorCls.Equals("ColorUNKNOWN", StringComparison.OrdinalIgnoreCase)) return "#b39900";
+
+        if (colorEl.ValueKind == JsonValueKind.Array && colorEl.GetArrayLength() >= 3 &&
+            colorEl[0].TryGetDouble(out double r) &&
+            colorEl[1].TryGetDouble(out double g) &&
+            colorEl[2].TryGetDouble(out double b))
+        {
+            int ri = Math.Clamp((int)Math.Round(r * 255), 0, 255);
+            int gi = Math.Clamp((int)Math.Round(g * 255), 0, 255);
+            int bi = Math.Clamp((int)Math.Round(b * 255), 0, 255);
+            return ($"#{ri:x2}{gi:x2}{bi:x2}");
+        }
+
+        return "#000000";
     }
 
     private void RegisterAsset(string className, string displayName, string paaPath)

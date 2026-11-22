@@ -365,25 +365,133 @@ public static class MissionExtractor
             int index = 0;
             foreach (var g in sideGroup)
             {
+                int phoneticIdx = (index / 24) % phonetic.Length;
+                int block = ((index % 24) / 6) + 1;
+                int num = (index % 6) + 1;
+                g.EditorCallSign = $"{phonetic[phoneticIdx]} {block}-{num}";
+
                 if (string.IsNullOrWhiteSpace(g.CallSign))
                 {
-                    int block = (index / 6) + 1;
-                    int num = (index % 6) + 1;
-                    g.CallSign = $"{phonetic[0]} {block}-{num}";
+                    g.CallSign = g.EditorCallSign;
                 }
                 index++;
 
-                var leaderRole = g.Units.FirstOrDefault()?.RoleDescription;
-                if (!string.IsNullOrEmpty(leaderRole))
+                var leader = g.Units.FirstOrDefault();
+                var leaderRole = leader?.RoleDescription;
+                if (leader != null && !string.IsNullOrEmpty(leaderRole))
                 {
-                    var match = Regex.Match(leaderRole, @"\(([^)]+)\)");
-                    if (match.Success)
+                    // 1. Обработка приписки названия отделения после '@' (нативный синтаксис лобби Arma 3: "Командир отделения@Альфа 1-1 (Мотопехота)")
+                    int atIdx = leaderRole.IndexOf('@');
+                    if (atIdx >= 0)
                     {
-                        g.SquadDescription = match.Groups[1].Value.Trim();
+                        string roleBeforeAt = leaderRole[..atIdx].Trim();
+                        string afterAt = leaderRole[(atIdx + 1)..].Trim();
+
+                        if (!string.IsNullOrEmpty(roleBeforeAt))
+                        {
+                            leader.RoleDescription = roleBeforeAt;
+                        }
+
+                        if (!string.IsNullOrEmpty(afterAt))
+                        {
+                            // Проверяем, начинается ли текст после '@' с позывного вида "Альфа 1-1" / "Alpha 1-1" / "1-1"
+                            var csMatch = Regex.Match(
+                                afterAt,
+                                @"^(?:(?:Альфа|Браво|Чарли|Дельта|Эхо|Фокстрот|Alpha|Bravo|Charlie|Delta|Echo|Foxtrot)\s+)?(\d+-\d+)\b\s*(.*)$",
+                                RegexOptions.IgnoreCase);
+
+                            if (csMatch.Success)
+                            {
+                                string digits = csMatch.Groups[1].Value;
+                                string rest = csMatch.Groups[2].Value.Trim().TrimStart('-', '—', ':', '.').Trim();
+
+                                // Если после '@' указан явный позывной с буквой (напр. "Альфа 1-2"), сохраняем его в CallSign
+                                var fullPrefixMatch = Regex.Match(
+                                    afterAt,
+                                    @"^((?:Альфа|Браво|Чарли|Дельта|Эхо|Фокстрот|Alpha|Bravo|Charlie|Delta|Echo|Foxtrot)\s+\d+-\d+)",
+                                    RegexOptions.IgnoreCase);
+                                if (fullPrefixMatch.Success)
+                                {
+                                    g.CallSign = fullPrefixMatch.Groups[1].Value.Trim();
+                                }
+                                else if (!g.CallSign.Contains(digits))
+                                {
+                                    g.CallSign = $"{phonetic[phoneticIdx]} {digits}";
+                                }
+
+                                g.SquadDescription = UnwrapOuterParentheses(rest);
+                            }
+                            else
+                            {
+                                // После '@' идет сразу название/состав отделения (напр. "@Мотопехота (БМП-2)" или "@Штаб стороны")
+                                g.SquadDescription = UnwrapOuterParentheses(afterAt);
+                            }
+                        }
+                    }
+
+                    // 2. Если после '@' описание не было задано (или '@' не использовался), достаем описание из внешних скобок (...) с учетом вложенных скобок!
+                    if (string.IsNullOrEmpty(g.SquadDescription))
+                    {
+                        var extracted = ExtractBalancedParentheses(leader.RoleDescription, out int closeParenIdx);
+                        if (!string.IsNullOrEmpty(extracted))
+                        {
+                            // Если после закрывающей скобки есть пометка вроде "| Резерв" (не "| Med" и не "| Eng"), сохраняем её в описание отделения
+                            if (closeParenIdx > 0 && closeParenIdx + 1 < leader.RoleDescription.Length)
+                            {
+                                var tail = leader.RoleDescription[(closeParenIdx + 1)..].Trim();
+                                if (tail.StartsWith("|") &&
+                                    !Regex.IsMatch(tail, @"^\|\s*(?:Med|Eng)\b", RegexOptions.IgnoreCase))
+                                {
+                                    extracted = $"{extracted} {tail}";
+                                }
+                            }
+                            g.SquadDescription = extracted;
+                        }
                     }
                 }
             }
         }
+    }
+
+    private static string UnwrapOuterParentheses(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        text = text.Trim();
+        if (text.StartsWith('(') && text.EndsWith(')'))
+        {
+            var inner = ExtractBalancedParentheses(text, out int closeIdx);
+            if (closeIdx == text.Length - 1 && !string.IsNullOrEmpty(inner))
+                return inner;
+        }
+        return text;
+    }
+
+    private static string ExtractBalancedParentheses(string text, out int closeParenIndex)
+    {
+        closeParenIndex = -1;
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+
+        int start = text.IndexOf('(');
+        if (start < 0) return string.Empty;
+
+        int depth = 0;
+        for (int i = start; i < text.Length; i++)
+        {
+            if (text[i] == '(') depth++;
+            else if (text[i] == ')')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    closeParenIndex = i;
+                    return text[(start + 1)..i].Trim();
+                }
+            }
+        }
+
+        // На случай незакрытой скобки в конце описания
+        closeParenIndex = text.Length - 1;
+        return text[(start + 1)..].Trim();
     }
 
     private static void ExtractLogicModule(SqmClass logicItem, MissionInfo mission)

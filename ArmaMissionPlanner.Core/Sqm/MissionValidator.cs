@@ -469,11 +469,12 @@ public static class MissionValidator
                 });
             }
 
-            for (int i = 1; i < groups.Count; i++)
+            for (int i = 0; i < groups.Count; i++)
             {
                 var g = groups[i];
                 var leaderRole = g.Units.FirstOrDefault()?.RoleDescription ?? "";
-                if (IsHqText(g.SquadDescription) || leaderRole.Contains("Командир стороны", StringComparison.OrdinalIgnoreCase) || leaderRole.Contains("КС", StringComparison.Ordinal))
+
+                if (i > 0 && (IsHqText(g.SquadDescription) || leaderRole.Contains("Командир стороны", StringComparison.OrdinalIgnoreCase) || leaderRole.Contains("КС", StringComparison.Ordinal)))
                 {
                     issues.Add(new ValidationIssue
                     {
@@ -483,6 +484,23 @@ public static class MissionValidator
                         Title = $"[{side}] Штабное отделение стоит не первым по списку",
                         Details = $"Отделение '{g.CallSign}' ({leaderRole}) находится на позиции #{i + 1}, а должно быть 1-м."
                     });
+                }
+
+                // П. 5.9: При изменении названия отделения на собственное, нумерация должна совпадать с редактором (Альфа X-X)
+                if (!string.IsNullOrWhiteSpace(g.EditorCallSign) && !string.IsNullOrWhiteSpace(g.CallSign))
+                {
+                    var numMatch = Regex.Match(g.EditorCallSign, @"\d+-\d+");
+                    if (numMatch.Success && !g.CallSign.Contains(numMatch.Value, StringComparison.OrdinalIgnoreCase))
+                    {
+                        issues.Add(new ValidationIssue
+                        {
+                            RuleNumber = "П. 5.9",
+                            Category = cat,
+                            Severity = "Error",
+                            Title = $"[{side}] Нумерация отделения '{g.CallSign}' не совпадает с редактором ({g.EditorCallSign})",
+                            Details = $"По п. 5.9 при изменении названия отделения необходимо сохранять нумерацию редактора ({g.EditorCallSign})."
+                        });
+                    }
                 }
             }
 
@@ -602,51 +620,60 @@ public static class MissionValidator
         {
             foreach (var u in g.Units)
             {
-                // Проверка Формы (Uniform)
+                // Проверка Формы (Uniform) с учетом рандомизации (selectRandom / BIS_fnc_selectRandom)
                 if (u.Loadout.UniformItems.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(u.Loadout.Uniform))
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Uniform) && u.Loadout.UniformVariants.Count == 0)
                     {
                         capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в форму (addItemToUniform), но форма не выдана!");
                     }
                     else
                     {
                         double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.UniformItems);
-                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Uniform) ?? 40;
+                        var (minCls, max) = ArmaCapacityCatalog.GetMinContainerMaxLoad(u.Loadout.UniformVariants, u.Loadout.Uniform, 40);
                         if (used > max + 0.5)
-                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Форма '{u.Loadout.Uniform}' ({used:F1} / {max:F0} ед.)");
+                        {
+                            var poolNote = u.Loadout.UniformVariants.Count > 1 ? $" (из пула рандома {u.Loadout.UniformVariants.Count} вар.)" : "";
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Форма '{minCls}'{poolNote} ({used:F1} / {max:F0} ед.)");
+                        }
                     }
                 }
 
-                // Проверка Разгрузки (Vest)
+                // Проверка Разгрузки (Vest) с учетом рандомизации
                 if (u.Loadout.VestItems.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(u.Loadout.Vest))
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Vest) && u.Loadout.VestVariants.Count == 0)
                     {
                         capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в разгрузку (addItemToVest), но разгрузка не выдана!");
                     }
                     else
                     {
                         double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.VestItems);
-                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Vest) ?? 140;
+                        var (minCls, max) = ArmaCapacityCatalog.GetMinContainerMaxLoad(u.Loadout.VestVariants, u.Loadout.Vest, 140);
                         if (used > max + 0.5)
-                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Разгрузка '{u.Loadout.Vest}' ({used:F1} / {max:F0} ед.)");
+                        {
+                            var poolNote = u.Loadout.VestVariants.Count > 1 ? $" (из пула рандома {u.Loadout.VestVariants.Count} вар.)" : "";
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнена Разгрузка '{minCls}'{poolNote} ({used:F1} / {max:F0} ед.)");
+                        }
                     }
                 }
 
-                // Проверка Рюкзака (Backpack)
+                // Проверка Рюкзака (Backpack) с учетом рандомизации
                 if (u.Loadout.BackpackItems.Count > 0)
                 {
-                    if (string.IsNullOrWhiteSpace(u.Loadout.Backpack))
+                    if (string.IsNullOrWhiteSpace(u.Loadout.Backpack) && u.Loadout.BackpackVariants.Count == 0)
                     {
                         capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: кладутся вещи в рюкзак (addItemToBackpack), но рюкзак не выдан!");
                     }
                     else
                     {
                         double used = ArmaCapacityCatalog.CalculateItemsMass(u.Loadout.BackpackItems);
-                        double max = ArmaCapacityCatalog.GetContainerMaxLoad(u.Loadout.Backpack) ?? 200;
+                        var (minCls, max) = ArmaCapacityCatalog.GetMinContainerMaxLoad(u.Loadout.BackpackVariants, u.Loadout.Backpack, 200);
                         if (used > max + 0.5)
-                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнен Рюкзак '{u.Loadout.Backpack}' ({used:F1} / {max:F0} ед.)");
+                        {
+                            var poolNote = u.Loadout.BackpackVariants.Count > 1 ? $" (из пула рандома {u.Loadout.BackpackVariants.Count} вар.)" : "";
+                            capacityErrors.Add($"[{g.CallSign}] {u.RoleDescription}: переполнен Рюкзак '{minCls}'{poolNote} ({used:F1} / {max:F0} ед.)");
+                        }
                     }
                 }
             }
@@ -697,7 +724,7 @@ public static class MissionValidator
                 Category = cat,
                 Severity = "Ok",
                 Title = "Вместимость инвентаря всех юнитов, ящиков и техники в норме",
-                Details = "Проверено по точным значениям mass и maximumLoad из конфигов Arma 3."
+                Details = "Проверено по точным значениям mass и maximumLoad из конфигов Arma 3 (с учетом рандомизации)."
             });
         }
 
@@ -763,15 +790,16 @@ public static class MissionValidator
             });
         }
 
-        // 6. Проверка на запрещенное ванильное вооружение, броню и фургон Van
+        // 6. Проверка на запрещенное ванильное вооружение, броню и фургон Van (включая все варианты из рандом-пулов)
         var forbiddenFound = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var u in mission.Groups.SelectMany(g => g.Units))
         {
-            CheckForbiddenClass(u.PrimaryWeapon, $"у юнита {u.RoleDescription}", forbiddenFound);
-            CheckForbiddenClass(u.SecondaryWeapon, $"у юнита {u.RoleDescription}", forbiddenFound);
-            CheckForbiddenClass(u.Loadout.Uniform, $"форма у {u.RoleDescription}", forbiddenFound);
-            CheckForbiddenClass(u.Loadout.Vest, $"разгрузка у {u.RoleDescription}", forbiddenFound);
-            CheckForbiddenClass(u.Loadout.Headgear, $"шлем у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.PrimaryWeaponVariants, u.PrimaryWeapon, $"оружие у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.SecondaryWeaponVariants, u.SecondaryWeapon, $"ПТ/труба у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.UniformVariants, u.Loadout.Uniform, $"форма у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.VestVariants, u.Loadout.Vest, $"разгрузка у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.HeadgearVariants, u.Loadout.Headgear, $"шлем у {u.RoleDescription}", forbiddenFound);
+            CheckForbiddenClassPool(u.Loadout.BackpackVariants, u.Loadout.Backpack, $"рюкзак у {u.RoleDescription}", forbiddenFound);
         }
         foreach (var v in mission.Vehicles)
         {
@@ -1090,6 +1118,89 @@ public static class MissionValidator
             });
         }
 
+        // Проверка остальных обязательных настроек WMT_Main (П. 7.4 - 7.9)
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_AI", out var aiVal) && aiVal.Trim() != "0" && !aiVal.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 7 (WMT_Main)",
+                Category = cat,
+                Severity = "Error",
+                Title = "В модуле WMT_Main включен ИИ",
+                Details = "По п. 7.7 параметр 'ИИ' в модуле WMT_Main обязательно должен быть отключен (0)."
+            });
+        }
+
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_NameTag", out var nameTagVal) && nameTagVal.Trim() == "0")
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 7 (WMT_Main)",
+                Category = cat,
+                Severity = "Error",
+                Title = "В модуле WMT_Main отключена подсветка ников",
+                Details = "По п. 7.5 подсветка ников в WMT_Main должна быть включена."
+            });
+        }
+
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_IndetifyTheBody", out var bodyVal) && bodyVal.Trim() == "0")
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 7 (WMT_Main)",
+                Category = cat,
+                Severity = "Error",
+                Title = "В модуле WMT_Main отключено распознавание мертвых",
+                Details = "По п. 7.6 распознавание мертвых в WMT_Main должно быть включено."
+            });
+        }
+
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_Statistic", out var statVal) && statVal.Trim() == "0")
+        {
+            issues.Add(new ValidationIssue
+            {
+                RuleNumber = "П. 7 (WMT_Main)",
+                Category = cat,
+                Severity = "Error",
+                Title = "В модуле WMT_Main отключена статистика",
+                Details = "По п. 7.8 статистика в WMT_Main должна быть включена."
+            });
+        }
+
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_DisableChannels", out var chanVal))
+        {
+            string[] requiredChannels = { "0", "2", "4", "5" };
+            var activeDisabled = chanVal.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var missingChans = requiredChannels.Where(rc => !activeDisabled.Contains(rc)).ToList();
+            if (missingChans.Count > 0)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    RuleNumber = "П. 7 (WMT_Main)",
+                    Category = cat,
+                    Severity = "Error",
+                    Title = $"Не отключены обязательные каналы связи в WMT_Main ({chanVal})",
+                    Details = $"По п. 7.9 обязательно должны быть отключены каналы 0, 2, 4, 5 (пропущены: {string.Join(", ", missingChans)})."
+                });
+            }
+        }
+
+        if (wmt.RawModuleAttributes.TryGetValue("WMT_Main.WMT_Main_ExtendedBriefing", out var extBrfVal) && extBrfVal.Trim() == "0")
+        {
+            bool hasTechTab = mission.Briefing.Any(b => b.Title.Contains("Техника", StringComparison.OrdinalIgnoreCase));
+            if (!hasTechTab)
+            {
+                issues.Add(new ValidationIssue
+                {
+                    RuleNumber = "П. 7 (WMT_Main)",
+                    Category = cat,
+                    Severity = "Error",
+                    Title = "Отключен Расширенный брифинг в WMT_Main без вкладки 'Техника'",
+                    Details = "По п. 7.4 отключение расширенного брифинга допускается только при наличии отдельной вкладки 'Техника' в брифинге."
+                });
+            }
+        }
+
         if (wmt.MissionTimeMinutes > 150)
         {
             issues.Add(new ValidationIssue
@@ -1182,7 +1293,7 @@ public static class MissionValidator
         foreach (var item in container.Children.OfType<SqmClass>())
         {
             var dataType = item.GetProperty("dataType")?.AsString();
-            if (dataType == "Layer")
+            if (dataType == "Layer" || dataType == "Group")
             {
                 var sub = item.GetClass("Entities");
                 if (sub != null) CheckVehicleAmmoBoxRecursive(sub, archive, uncleanedList);
@@ -1191,9 +1302,11 @@ public static class MissionValidator
 
             if (dataType != "Object") continue;
             var typeName = item.GetProperty("type")?.AsString() ?? "";
-            if (string.IsNullOrEmpty(typeName) || IsStaticScenery(typeName)) continue;
+            if (string.IsNullOrEmpty(typeName) || IsStaticScenery(typeName) || MissionExtractor.IsUavAiUnitClass(typeName)) continue;
 
             var attributes = item.GetClass("Attributes");
+            if (ReadPlayableFlag(item, attributes)) continue;
+
             var initScript = ReadStringField(item, attributes, "init");
 
             if (HasScriptCargoClear(initScript, archive)) continue;
@@ -1210,64 +1323,80 @@ public static class MissionValidator
         }
     }
 
+    private static bool ReadPlayableFlag(SqmClass entity, SqmClass? attributes)
+    {
+        var p1 = attributes?.GetProperty("isPlayable")?.AsInt() ?? entity.GetProperty("isPlayable")?.AsInt() ?? 0;
+        var p2 = attributes?.GetProperty("isPlayer")?.AsInt() ?? entity.GetProperty("isPlayer")?.AsInt() ?? 0;
+        return p1 == 1 || p2 == 1;
+    }
+
     private static bool HasScriptCargoClear(string initScript, PboArchive? archive)
     {
         if (string.IsNullOrWhiteSpace(initScript)) return false;
         if (initScript.Contains("clearWeaponCargo", StringComparison.OrdinalIgnoreCase) ||
             initScript.Contains("clearMagazineCargo", StringComparison.OrdinalIgnoreCase) ||
-            initScript.Contains("clearItemCargo", StringComparison.OrdinalIgnoreCase))
+            initScript.Contains("clearItemCargo", StringComparison.OrdinalIgnoreCase) ||
+            initScript.Contains("clearBackpackCargo", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
         if (archive == null) return false;
-        var match = Regex.Match(initScript, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase);
-        if (!match.Success) return false;
-
-        var scriptPath = NormalizePath(match.Groups[1].Value);
-        var entry = archive.Entries.FirstOrDefault(e => NormalizePath(e.FileName).Equals(scriptPath, StringComparison.OrdinalIgnoreCase));
-        if (entry == null) return false;
-
-        try
+        foreach (Match match in Regex.Matches(initScript, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase))
         {
-            var content = archive.GetFileContentAsString(entry.FileName);
-            return content.Contains("clearWeaponCargo", StringComparison.OrdinalIgnoreCase) ||
-                   content.Contains("clearMagazineCargo", StringComparison.OrdinalIgnoreCase) ||
-                   content.Contains("clearItemCargo", StringComparison.OrdinalIgnoreCase);
+            var scriptPath = NormalizePath(match.Groups[1].Value);
+            var entry = archive.Entries.FirstOrDefault(e => NormalizePath(e.FileName).Equals(scriptPath, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) continue;
+
+            try
+            {
+                var content = StripSqfComments(archive.GetFileContentAsString(entry.FileName));
+                if (content.Contains("clearWeaponCargo", StringComparison.OrdinalIgnoreCase) ||
+                    content.Contains("clearMagazineCargo", StringComparison.OrdinalIgnoreCase) ||
+                    content.Contains("clearItemCargo", StringComparison.OrdinalIgnoreCase) ||
+                    content.Contains("clearBackpackCargo", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
         }
-        catch
-        {
-            return false;
-        }
+        return false;
     }
 
     private static bool IsLocalSafeCall(string initScript, PboArchive? archive)
     {
-        if (initScript.Contains("local", StringComparison.OrdinalIgnoreCase) ||
-            initScript.Contains("isServer", StringComparison.OrdinalIgnoreCase))
+        var cleanInit = StripSqfComments(initScript);
+        if (Regex.IsMatch(cleanInit, @"\b(?:local|isServer|isDedicated)\b", RegexOptions.IgnoreCase))
         {
             return true;
         }
 
         if (archive == null) return true;
-        var match = Regex.Match(initScript, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase);
-        if (!match.Success) return true;
+        var matches = Regex.Matches(cleanInit, @"[""']([^""']+\.sqf)[""']", RegexOptions.IgnoreCase);
+        if (matches.Count == 0) return true;
 
-        var scriptPath = NormalizePath(match.Groups[1].Value);
-        var entry = archive.Entries.FirstOrDefault(e => NormalizePath(e.FileName).Equals(scriptPath, StringComparison.OrdinalIgnoreCase));
-        if (entry == null) return true;
+        foreach (Match match in matches)
+        {
+            var scriptPath = NormalizePath(match.Groups[1].Value);
+            var entry = archive.Entries.FirstOrDefault(e => NormalizePath(e.FileName).Equals(scriptPath, StringComparison.OrdinalIgnoreCase));
+            if (entry == null) continue;
 
-        try
-        {
-            var content = archive.GetFileContentAsString(entry.FileName);
-            return content.Contains("local", StringComparison.OrdinalIgnoreCase) ||
-                   content.Contains("isServer", StringComparison.OrdinalIgnoreCase) ||
-                   content.Contains("isDedicated", StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                var content = StripSqfComments(archive.GetFileContentAsString(entry.FileName));
+                if (!Regex.IsMatch(content, @"\b(?:local|isServer|isDedicated)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+            }
         }
-        catch
-        {
-            return true;
-        }
+        return true;
     }
 
     private static void CollectAllStringsFromSqm(SqmClass node, string path, List<(string Context, string Text)> list)
@@ -1310,7 +1439,7 @@ public static class MissionValidator
 
                 if (type.Equals("ModuleEditTerrainObject_F", StringComparison.OrdinalIgnoreCase))
                 {
-                    var allowDamage = FindCustomAttr(item, "allowDamage");
+                    var allowDamage = FindCustomAttr(item, "allowDamage") ?? FindCustomAttr(item.GetClass("Attributes"), "allowDamage");
                     if (allowDamage != null && (allowDamage.Equals("false", StringComparison.OrdinalIgnoreCase) || allowDamage == "0"))
                     {
                         cupEditTerrainErrors.Add(type);
@@ -1395,6 +1524,19 @@ public static class MissionValidator
             "Helper", "Clutter", "Lamp", "PowerLines", "Tree", "Bush", "Rock", "ACE_ConcertinaWire"
         };
         return prefixes.Any(p => typeName.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void CheckForbiddenClassPool(IReadOnlyList<string>? pool, string? primary, string context, HashSet<string> target)
+    {
+        if (pool != null && pool.Count > 0)
+        {
+            foreach (var cls in pool)
+                CheckForbiddenClass(cls, context, target);
+        }
+        else
+        {
+            CheckForbiddenClass(primary, context, target);
+        }
     }
 
     private static void CheckForbiddenClass(string? cls, string context, HashSet<string> target)

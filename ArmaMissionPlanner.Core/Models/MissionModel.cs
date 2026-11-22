@@ -73,6 +73,7 @@ public class WmtPointInfo
 public class BriefingSection
 {
     public string Title { get; set; } = string.Empty;
+    public string Side { get; set; } = string.Empty;
     public string HtmlText { get; set; } = string.Empty;
 }
 
@@ -81,6 +82,7 @@ public class SquadGroup
     public int Id { get; set; }
     public string Side { get; set; } = string.Empty;
     public string CallSign { get; set; } = string.Empty;
+    public string EditorCallSign { get; set; } = string.Empty;
     public string SquadDescription { get; set; } = string.Empty;
     public List<SquadUnit> Units { get; set; } = new();
 }
@@ -107,6 +109,17 @@ public class UnitLoadout
     public string Backpack { get; set; } = string.Empty;
     public string Headgear { get; set; } = string.Empty;
     public string Goggles { get; set; } = string.Empty;
+
+    // Все варианты из пула рандомизации (selectRandom / BIS_fnc_selectRandom)
+    public List<string> UniformVariants { get; set; } = new();
+    public List<string> VestVariants { get; set; } = new();
+    public List<string> BackpackVariants { get; set; } = new();
+    public List<string> HeadgearVariants { get; set; } = new();
+    public List<string> GogglesVariants { get; set; } = new();
+    public List<string> PrimaryWeaponVariants { get; set; } = new();
+    public List<string> SecondaryWeaponVariants { get; set; } = new();
+    public List<string> HandgunVariants { get; set; } = new();
+
     public List<string> WeaponAttachments { get; set; } = new();
     public List<string> LinkedItems { get; set; } = new();
     public Dictionary<string, int> ItemsAndMagazines { get; set; } = new(StringComparer.OrdinalIgnoreCase);

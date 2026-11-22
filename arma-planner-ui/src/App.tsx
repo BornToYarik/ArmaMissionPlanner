@@ -35,7 +35,7 @@ const ClassIcon: React.FC<{ classNameStr?: string; size?: string }> = ({
   );
 };
 
-// Полная палитра цветов SWT Markers
+// Полная палитра цветов SWT Markers (27 цветов 0..26 из CfgMarkerColors дампа Arma 3)
 export interface SwtColorDef {
   swtIdx: number;
   armaClass: string;
@@ -43,48 +43,53 @@ export interface SwtColorDef {
   hex: string;
 }
 
-const SWT_COLORS: SwtColorDef[] = [
-  { swtIdx: 0, armaClass: 'Default', name: 'Черный (Default)', hex: '#0f172a' },
-  { swtIdx: 1, armaClass: 'ColorBlack', name: 'Черный', hex: '#000000' },
-  { swtIdx: 2, armaClass: 'ColorGrey', name: 'Серый', hex: '#64748b' },
-  { swtIdx: 3, armaClass: 'ColorRed', name: 'Красный', hex: '#dc2626' },
-  { swtIdx: 4, armaClass: 'ColorBrown', name: 'Коричневый', hex: '#78350f' },
-  { swtIdx: 5, armaClass: 'ColorOrange', name: 'Оранжевый', hex: '#ea580c' },
-  { swtIdx: 6, armaClass: 'ColorYellow', name: 'Желтый', hex: '#eab308' },
-  { swtIdx: 7, armaClass: 'ColorKhaki', name: 'Хаки', hex: '#65a30d' },
-  { swtIdx: 8, armaClass: 'ColorGreen', name: 'Зеленый', hex: '#16a34a' },
-  { swtIdx: 9, armaClass: 'ColorBlue', name: 'Синий', hex: '#2563eb' },
-  { swtIdx: 10, armaClass: 'ColorPink', name: 'Розовый', hex: '#db2777' },
-  { swtIdx: 11, armaClass: 'ColorWhite', name: 'Белый', hex: '#f8fafc' },
-  { swtIdx: 12, armaClass: 'ColorWEST', name: 'BLUFOR (Синий)', hex: '#004d99' },
-  { swtIdx: 13, armaClass: 'ColorEAST', name: 'OPFOR (Красный)', hex: '#800000' },
-  { swtIdx: 14, armaClass: 'ColorGUER', name: 'IND (Зеленый)', hex: '#008000' },
-  { swtIdx: 15, armaClass: 'ColorCIV', name: 'CIV (Фиолетовый)', hex: '#660080' },
-  { swtIdx: 16, armaClass: 'ColorUNKNOWN', name: 'UNKNOWN (Желтый)', hex: '#b39900' },
-  { swtIdx: 21, armaClass: 'colorBLUFOR', name: 'NATO Синий', hex: '#1d4ed8' },
-  { swtIdx: 22, armaClass: 'colorOPFOR', name: 'CSAT Красный', hex: '#b91c1c' },
-  { swtIdx: 23, armaClass: 'colorIndependent', name: 'AAF Зеленый', hex: '#15803d' },
-  { swtIdx: 24, armaClass: 'colorCivilian', name: 'Гражданский', hex: '#7e22ce' },
-  { swtIdx: 25, armaClass: 'Color1_FD_F', name: 'Светло-красный', hex: '#f87171' },
-  { swtIdx: 26, armaClass: 'Color2_FD_F', name: 'Темно-серый (Такт.)', hex: '#334155' },
+const DEFAULT_SWT_COLORS: SwtColorDef[] = [
+  { swtIdx: 0, armaClass: 'Default', name: '00. По умолч. (Default)', hex: '#000000' },
+  { swtIdx: 1, armaClass: 'ColorBlack', name: '01. Черный (ColorBlack)', hex: '#000000' },
+  { swtIdx: 2, armaClass: 'ColorGrey', name: '02. Серый (ColorGrey)', hex: '#808080' },
+  { swtIdx: 3, armaClass: 'ColorRed', name: '03. Красный (ColorRed)', hex: '#e60000' },
+  { swtIdx: 4, armaClass: 'ColorBrown', name: '04. Коричневый (ColorBrown)', hex: '#804000' },
+  { swtIdx: 5, armaClass: 'ColorOrange', name: '05. Оранжевый (ColorOrange)', hex: '#d96600' },
+  { swtIdx: 6, armaClass: 'ColorYellow', name: '06. Желтый (ColorYellow)', hex: '#d9d900' },
+  { swtIdx: 7, armaClass: 'ColorKhaki', name: '07. Хаки (ColorKhaki)', hex: '#809966' },
+  { swtIdx: 8, armaClass: 'ColorGreen', name: '08. Зеленый (ColorGreen)', hex: '#00cc00' },
+  { swtIdx: 9, armaClass: 'ColorBlue', name: '09. Синий (ColorBlue)', hex: '#0000ff' },
+  { swtIdx: 10, armaClass: 'ColorPink', name: '10. Розовый (ColorPink)', hex: '#ff4d66' },
+  { swtIdx: 11, armaClass: 'ColorWhite', name: '11. Белый (ColorWhite)', hex: '#ffffff' },
+  { swtIdx: 12, armaClass: 'ColorWEST', name: '12. BLUFOR (ColorWEST)', hex: '#004d99' },
+  { swtIdx: 13, armaClass: 'ColorEAST', name: '13. OPFOR (ColorEAST)', hex: '#800000' },
+  { swtIdx: 14, armaClass: 'ColorGUER', name: '14. Независимые (ColorGUER)', hex: '#008000' },
+  { swtIdx: 15, armaClass: 'ColorCIV', name: '15. Гражданские (ColorCIV)', hex: '#660080' },
+  { swtIdx: 16, armaClass: 'ColorUNKNOWN', name: '16. Неизвестная сторона (ColorUNKNOWN)', hex: '#b39900' },
+  { swtIdx: 17, armaClass: 'colorBLUFOR', name: '17. BLUFOR (colorBLUFOR)', hex: '#1d4ed8' },
+  { swtIdx: 18, armaClass: 'colorOPFOR', name: '18. OPFOR (colorOPFOR)', hex: '#b91c1c' },
+  { swtIdx: 19, armaClass: 'colorIndependent', name: '19. Независимые (colorIndependent)', hex: '#15803d' },
+  { swtIdx: 20, armaClass: 'colorCivilian', name: '20. Гражданские (colorCivilian)', hex: '#7e22ce' },
+  { swtIdx: 21, armaClass: 'Color1_FD_F', name: '21. Красный (Color1_FD_F)', hex: '#b13339' },
+  { swtIdx: 22, armaClass: 'Color2_FD_F', name: '22. Зеленый (Color2_FD_F)', hex: '#adbf83' },
+  { swtIdx: 23, armaClass: 'Color3_FD_F', name: '23. Оранжевый (Color3_FD_F)', hex: '#f08231' },
+  { swtIdx: 24, armaClass: 'Color4_FD_F', name: '24. Синий (Color4_FD_F)', hex: '#678b9b' },
+  { swtIdx: 25, armaClass: 'Color5_FD_F', name: '25. Фиолетовый (Color5_FD_F)', hex: '#b040a7' },
+  { swtIdx: 26, armaClass: 'Color6_FD_F', name: '26. Серый (Color6_FD_F)', hex: '#5a595a' },
 ];
 
-function getSwtColorByIdx(idx: number): SwtColorDef {
-  return SWT_COLORS.find(c => c.swtIdx === idx) || SWT_COLORS.find(c => c.swtIdx === 12)!;
+function getSwtColorByIdx(idx: number, colors: SwtColorDef[] = DEFAULT_SWT_COLORS): SwtColorDef {
+  return colors.find(c => c.swtIdx === idx) || colors.find(c => c.swtIdx === 12) || DEFAULT_SWT_COLORS[12];
 }
 
-function getMissionMarkerColorHex(colorName?: string): string {
-  if (!colorName) return '#0f172a';
+function getMissionMarkerColorHex(colorName?: string, colors: SwtColorDef[] = DEFAULT_SWT_COLORS): string {
+  if (!colorName) return 'Default';
   const lower = colorName.toLowerCase();
-  const found = SWT_COLORS.find(c => c.armaClass.toLowerCase() === lower);
+  if (lower === 'default') return 'Default';
+  const found = colors.find(c => c.armaClass.toLowerCase() === lower);
   if (found) return found.hex;
-  if (lower.includes('red') || lower.includes('east') || lower.includes('opfor')) return '#dc2626';
-  if (lower.includes('blue') || lower.includes('west') || lower.includes('blufor')) return '#2563eb';
-  if (lower.includes('green') || lower.includes('guer') || lower.includes('ind')) return '#16a34a';
-  if (lower.includes('yellow') || lower.includes('unknown')) return '#eab308';
-  if (lower.includes('orange')) return '#ea580c';
-  if (lower.includes('white')) return '#f8fafc';
-  return '#1e293b';
+  if (lower.includes('red') || lower.includes('east') || lower.includes('opfor')) return '#e60000';
+  if (lower.includes('blue') || lower.includes('west') || lower.includes('blufor')) return '#004d99';
+  if (lower.includes('green') || lower.includes('guer') || lower.includes('ind')) return '#008000';
+  if (lower.includes('yellow') || lower.includes('unknown')) return '#d9d900';
+  if (lower.includes('orange')) return '#d96600';
+  if (lower.includes('white')) return '#ffffff';
+  return '#000000';
 }
 
 const MARKER_SIZES = [
@@ -97,105 +102,48 @@ export interface SwtMarkerTypeDef {
   swtIdx: number;
   id: string;
   name: string;
+  hasIcon?: boolean;
+  isFullColor?: boolean;
+  isPureBlack?: boolean;
+  defaultColorHex?: string;
 }
 
-export const SWT_MARKER_TYPES: SwtMarkerTypeDef[] = [
-  { swtIdx: 0, id: 'hd_objective', name: '00. Цель (Перекрестие в круге)' },
-  { swtIdx: 1, id: 'mil_marker', name: '01. Рубеж (Прямоугольник со штоком)' },
-  { swtIdx: 2, id: 'hd_flag', name: '02. Флажок (Пункт сбора)' },
-  { swtIdx: 3, id: 'hd_arrow', name: '03. Стрелка контурная' },
-  { swtIdx: 4, id: 'mil_arrow2', name: '04. Стрелка залитая' },
-  { swtIdx: 5, id: 'hd_ambush', name: '05. Направление / Засада' },
-  { swtIdx: 6, id: 'hd_destroy', name: '06. Крест / Уничтожить' },
-  { swtIdx: 7, id: 'hd_start', name: '07. Точка выхода (Старт)' },
-  { swtIdx: 8, id: 'hd_end', name: '08. Точка отхода (Конец)' },
-  { swtIdx: 9, id: 'hd_pickup', name: '09. Погрузка / Эвакуация' },
-  { swtIdx: 10, id: 'hd_join', name: '10. Соединение' },
-  { swtIdx: 11, id: 'hd_warning', name: '11. Внимание (!)' },
-  { swtIdx: 12, id: 'hd_unknown', name: '12. Вопрос (?)' },
-  { swtIdx: 13, id: 'hd_dot', name: '13. Точка (Малая)' },
-  { swtIdx: 14, id: 'mil_circle', name: '14. Кольцо (Пустой круг)' },
-  { swtIdx: 15, id: 'mil_dot', name: '15. Точка средняя' },
-  { swtIdx: 16, id: 'mil_box', name: '16. Квадрат' },
-  { swtIdx: 17, id: 'mil_triangle', name: '17. Треугольник' },
-  { swtIdx: 18, id: 'mil_objective', name: '18. Цель (Круг с крестом)' },
-  { swtIdx: 19, id: 'mil_flag', name: '19. Флаг треугольный' },
-  { swtIdx: 20, id: 'mil_arrow', name: '20. Стрелка тонкая' },
-  { swtIdx: 21, id: 'mil_ambush', name: '21. Засада (Елочка)' },
-  { swtIdx: 22, id: 'mil_destroy', name: '22. Уничтожить (Искры)' },
-  { swtIdx: 23, id: 'mil_start', name: '23. Плюс / Медпункт' },
-  { swtIdx: 24, id: 'mil_end', name: '24. Точка с дугой' },
-  { swtIdx: 25, id: 'mil_pickup', name: '25. Десант / Высадка' },
-  { swtIdx: 26, id: 'mil_join', name: '26. Сбор (Две стрелки)' },
-  { swtIdx: 27, id: 'mil_warning', name: '27. Внимание (!)' },
-  { swtIdx: 28, id: 'mil_unknown', name: '28. Вопрос (?)' },
-  { swtIdx: 29, id: 'mil_marker', name: '29. Ориентир' },
-  { swtIdx: 30, id: 'b_unknown', name: '30. Подразделение (Рамка)' },
-  { swtIdx: 31, id: 'o_unknown', name: '31. Подразделение (Ромб)' },
-  { swtIdx: 32, id: 'n_unknown', name: '32. Подразделение (Квадрат)' },
-  { swtIdx: 33, id: 'b_inf', name: '33. Пехота (Крест)' },
-  { swtIdx: 34, id: 'o_inf', name: '34. Пехота (Ромб)' },
-  { swtIdx: 35, id: 'n_inf', name: '35. Пехота (Квадрат)' },
-  { swtIdx: 36, id: 'b_motor_inf', name: '36. Мотопехота' },
-  { swtIdx: 37, id: 'b_mech_inf', name: '37. Мех. пехота (БМП/БТР)' },
-  { swtIdx: 38, id: 'b_armor', name: '38. Бронетехника (Танк)' },
-  { swtIdx: 39, id: 'b_recon', name: '39. Разведка' },
-  { swtIdx: 40, id: 'b_air', name: '40. Вертолет / Авиация' },
-  { swtIdx: 41, id: 'b_plane', name: '41. Самолет' },
-  { swtIdx: 42, id: 'b_uav', name: '42. БПЛА (UAV)' },
-  { swtIdx: 43, id: 'b_naval', name: '43. Флот / Лодка (Якорь)' },
-  { swtIdx: 44, id: 'b_art', name: '44. Артиллерия' },
-  { swtIdx: 45, id: 'b_mortar', name: '45. Миномет' },
-  { swtIdx: 46, id: 'b_hq', name: '46. Штаб (HQ)' },
-  { swtIdx: 47, id: 'b_support', name: '47. Поддержка / Инженеры' },
-  { swtIdx: 48, id: 'b_maint', name: '48. Ремонт' },
-  { swtIdx: 49, id: 'b_med', name: '49. Медицина' },
-  { swtIdx: 50, id: 'b_service', name: '50. Снабжение' },
-  { swtIdx: 51, id: 'b_antiair', name: '51. ПВО (Зенитка)' },
-  { swtIdx: 52, id: 'b_installation', name: '52. База / Укрепление' },
-  { swtIdx: 53, id: 'o_motor_inf', name: '53. Мотопехота (Ромб)' },
-  { swtIdx: 54, id: 'o_mech_inf', name: '54. Мех. пехота (Ромб)' },
-  { swtIdx: 55, id: 'o_armor', name: '55. Броня (Ромб)' },
-  { swtIdx: 56, id: 'o_recon', name: '56. Разведка (Ромб)' },
-  { swtIdx: 57, id: 'o_air', name: '57. Вертолет (Ромб)' },
-  { swtIdx: 58, id: 'o_plane', name: '58. Самолет (Ромб)' },
-  { swtIdx: 59, id: 'o_uav', name: '59. БПЛА (Ромб)' },
-  { swtIdx: 60, id: 'o_naval', name: '60. Лодка (Ромб)' },
-  { swtIdx: 61, id: 'o_art', name: '61. Артиллерия (Ромб)' },
-  { swtIdx: 62, id: 'o_mortar', name: '62. Миномет (Ромб)' },
-  { swtIdx: 63, id: 'o_hq', name: '63. Штаб (Ромб)' },
-  { swtIdx: 64, id: 'o_support', name: '64. Поддержка (Ромб)' },
-  { swtIdx: 65, id: 'o_maint', name: '65. Ремонт (Ромб)' },
-  { swtIdx: 66, id: 'o_med', name: '66. Медицина (Ромб)' },
-  { swtIdx: 67, id: 'o_service', name: '67. Снабжение (Ромб)' },
-  { swtIdx: 68, id: 'o_antiair', name: '68. ПВО (Ромб)' },
-  { swtIdx: 69, id: 'n_motor_inf', name: '69. Мотопехота (Квадрат)' },
-  { swtIdx: 70, id: 'n_mech_inf', name: '70. Мех. пехота (Квадрат)' },
-  { swtIdx: 71, id: 'n_armor', name: '71. Броня (Квадрат)' },
-  { swtIdx: 72, id: 'n_recon', name: '72. Разведка (Квадрат)' },
-  { swtIdx: 73, id: 'n_air', name: '73. Вертолет (Квадрат)' },
-  { swtIdx: 74, id: 'n_art', name: '74. Артиллерия (Квадрат)' },
-  ...Array.from({ length: 20 }, (_, i) => ({
-    swtIdx: 75 + i,
-    id: `group_${Math.min(11, i)}`,
-    name: `${75 + i}. Тактический знак / Группа #${75 + i}`,
-  })),
-  { swtIdx: 95, id: 'Contact_circle1', name: '95. Круглый значок (ПТ/Сектор)' },
-  { swtIdx: 96, id: 'Contact_circle2', name: '96. Круглый значок (Позиция)' },
-  { swtIdx: 97, id: 'Contact_circle3', name: '97. Круглый значок (Огонь)' },
-  { swtIdx: 98, id: 'Contact_circle4', name: '98. Круглый значок (Техника)' },
-  { swtIdx: 99, id: 'loc_radio', name: '99. Круглый значок (Связь)' },
-  { swtIdx: 100, id: 'loc_search', name: '100. Круглый значок (Наблюдение)' },
-  { swtIdx: 101, id: 'loc_defend', name: '101. Круглый значок (Укреп)' },
-  { swtIdx: 102, id: 'loc_Bunker', name: '102. Круглый значок (Бункер)' },
-  { swtIdx: 103, id: 'KIA', name: '103. Череп (KIA / Опасность)' },
-  { swtIdx: 106, id: 'loc_Cross', name: '106. Малый крест' },
-  { swtIdx: 107, id: 'mil_triangle', name: '107. Пустой треугольник (ОП)' },
-  { swtIdx: 108, id: 'Minefield', name: '108. Минное поле (Треугольник)' },
-  { swtIdx: 109, id: 'loc_Fortress', name: '109. Бункер / ДОТ' },
-  { swtIdx: 110, id: 'loc_Box', name: '110. Ящик / Склад' },
-  { swtIdx: 111, id: 'b_inf', name: '111. Позиция отделения (Малая)' },
-  { swtIdx: 112, id: 'b_inf', name: '112. Рубеж отделения (Широкий)' },
+// Базовый список маркеров с реальными индексами из дампа Arma 3 (до загрузки полного каталога с /api/assets/markers)
+export const DEFAULT_SWT_MARKER_TYPES: SwtMarkerTypeDef[] = [
+  { swtIdx: 2, id: 'mil_objective', name: 'Цель', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 4, id: 'mil_marker', name: 'Маркер', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 6, id: 'mil_flag', name: 'Флаг', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 8, id: 'mil_arrow', name: 'Стрелка', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 10, id: 'mil_arrow2', name: 'Стрелка (закраш.)', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 12, id: 'mil_ambush', name: 'Засада', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 14, id: 'mil_destroy', name: 'Уничтожить', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 16, id: 'mil_start', name: 'Старт', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 18, id: 'mil_end', name: 'Конец', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 20, id: 'mil_pickup', name: 'Подобрать', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 22, id: 'mil_join', name: 'Присоед.', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 24, id: 'mil_warning', name: 'Предупреждение', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 26, id: 'mil_unknown', name: 'Неизвестно', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 28, id: 'mil_circle', name: 'Круг', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 30, id: 'mil_dot', name: 'Точка', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 32, id: 'mil_box', name: 'Квадрат', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 34, id: 'mil_triangle', name: 'Треугольник', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 63, id: 'b_inf', name: 'Пехота (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 64, id: 'o_inf', name: 'Пехота (OPFOR)', hasIcon: true, defaultColorHex: '#800000' },
+  { swtIdx: 65, id: 'n_inf', name: 'Пехота (IND)', hasIcon: true, defaultColorHex: '#008000' },
+  { swtIdx: 66, id: 'b_motor_inf', name: 'Мотопехота (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 69, id: 'b_mech_inf', name: 'Мех. пехота (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 72, id: 'b_armor', name: 'Бронетехника (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 75, id: 'b_recon', name: 'Разведка (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 78, id: 'b_air', name: 'Вертолет (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 84, id: 'b_uav', name: 'БПЛА (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 90, id: 'b_med', name: 'Медик (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 93, id: 'b_art', name: 'Артиллерия (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 96, id: 'b_mortar', name: 'Миномет (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 99, id: 'b_hq', name: 'Штаб (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
+  { swtIdx: 123, id: 'group_0', name: 'Огневая группа', hasIcon: true, isPureBlack: true, defaultColorHex: '#000000' },
+  { swtIdx: 124, id: 'group_1', name: 'Отделение', hasIcon: true, isPureBlack: true, defaultColorHex: '#000000' },
+  { swtIdx: 206, id: 'KIA', name: 'Убит в бою (KIA)', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 207, id: 'Minefield', name: 'Минное поле', hasIcon: true, defaultColorHex: '#e60000' },
 ];
 
 export interface SwtPlanMarker {
@@ -323,168 +271,117 @@ function getRotatedEllipseLatLngs(
   return pts;
 }
 
+function hexToNormalizedRgb(hex: string): [number, number, number] {
+  const clean = (hex || '#000000').replace('#', '').trim();
+  if (clean.length !== 6) return [0, 0, 0];
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return [
+    Number.isFinite(r) ? Number(r.toFixed(4)) : 0,
+    Number.isFinite(g) ? Number(g.toFixed(4)) : 0,
+    Number.isFinite(b) ? Number(b.toFixed(4)) : 0,
+  ];
+}
+
+function isFlagMarkerClass(cls: string): boolean {
+  const lower = cls.toLowerCase();
+  return (
+      lower.startsWith('flag_') ||
+      lower.startsWith('rhs_flag') ||
+      lower.startsWith('lop_flag') ||
+      lower.startsWith('40th_flag') ||
+      lower.startsWith('rhssaf_flag') ||
+      lower.startsWith('faction_') ||
+      lower.startsWith('usp_marker')
+  );
+}
+
 function renderMarkerHtml(
     typeIdxOrName: number | string,
-    colorHex: string,
+    colorHexOrDefault: string,
     text: string,
     angle: number = 0,
-    scale: number = 1
+    scale: number = 1,
+    markerCatalog: SwtMarkerTypeDef[] = DEFAULT_SWT_MARKER_TYPES
 ): string {
   const safeText = (text || '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-  const sizePx = Math.round(24 * scale);
+  const sizePx = Math.round(26 * scale);
 
-  if (typeof typeIdxOrName === 'string') {
+  let def: SwtMarkerTypeDef | undefined;
+  if (typeof typeIdxOrName === 'number') {
+    def = markerCatalog.find(t => t.swtIdx === typeIdxOrName);
+  } else if (typeof typeIdxOrName === 'string') {
     const lower = typeIdxOrName.toLowerCase();
-    const isFullColorPngMarker =
-        lower.startsWith('flag_') ||
-        lower.startsWith('rhs_flag') ||
-        lower.startsWith('lop_flag') ||
-        lower.startsWith('40th_flag') ||
-        lower.startsWith('rhssaf_flag') ||
-        lower.startsWith('faction_') ||
-        lower.startsWith('usp_marker') ||
-        lower.startsWith('loc_');
+    def = markerCatalog.find(t => t.id.toLowerCase() === lower);
+  }
 
-    if (isFullColorPngMarker) {
-      return `<div style="transform:translate(-${Math.round(sizePx / 2)}px, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;">
-        <img src="/api/assets/icon/${encodeURIComponent(typeIdxOrName)}" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.8));" onerror="this.style.display='none'" />
-        ${
+  const markerClass =
+      def?.id || (typeof typeIdxOrName === 'string' && typeIdxOrName ? typeIdxOrName : 'mil_dot');
+
+  const isDefaultColor = !colorHexOrDefault || colorHexOrDefault.toLowerCase() === 'default';
+  const effectiveHex = isDefaultColor
+      ? def?.defaultColorHex || '#000000'
+      : colorHexOrDefault;
+
+  const labelHex =
+      effectiveHex.toLowerCase() === '#ffffff' && def?.isFullColor ? '#0f172a' : effectiveHex;
+
+  // Если это многоцветный флаг или иконка локации с цветом Default ([1,1,1,1]) — рисуем оригинальный цветной PNG
+  if (isFlagMarkerClass(markerClass) || (def?.isFullColor && isDefaultColor)) {
+    return `<div style="transform:translate(-${Math.round(sizePx / 2)}px, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;">
+      <img src="/api/assets/icon/${encodeURIComponent(markerClass)}" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.8));" onerror="this.style.display='none'" />
+      ${
           safeText
-              ? `<span style="color:${colorHex};background:rgba(255,255,255,0.85);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);">${safeText}</span>`
+              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.88);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);">${safeText}</span>`
               : ''
       }
-      </div>`;
-    }
+    </div>`;
   }
 
-  let idx = typeof typeIdxOrName === 'number' ? typeIdxOrName : -1;
-  if (typeof typeIdxOrName === 'string') {
-    const lower = typeIdxOrName.toLowerCase();
-    const found = SWT_MARKER_TYPES.find(t => t.id.toLowerCase() === lower);
-    if (found) idx = found.swtIdx;
-    else if (lower.includes('inf')) idx = 33;
-    else if (lower.includes('motor')) idx = 36;
-    else if (lower.includes('mech')) idx = 37;
-    else if (lower.includes('armor')) idx = 38;
-    else if (lower.includes('recon')) idx = 39;
-    else if (lower.includes('air') || lower.includes('heli')) idx = 40;
-    else if (lower.includes('plane')) idx = 41;
-    else if (lower.includes('art')) idx = 44;
-    else if (lower.includes('mortar')) idx = 45;
-    else if (lower.includes('hq')) idx = 46;
-    else if (lower.includes('med')) idx = 49;
-    else if (lower.includes('objective')) idx = 0;
-    else if (lower.includes('flag')) idx = 2;
-    else if (lower.includes('arrow')) idx = 4;
-    else if (lower.includes('warning') || lower.includes('mine')) idx = 108;
-    else idx = 15;
+  // Основной рендер через сдампленный PNG из Arma 3 с шейдером feColorMatrix (точный аналог движка Армы: белый красится в цвет, черная обводка/тень остается черной)
+  if (def?.hasIcon !== false) {
+    const [r, g, b] = hexToNormalizedRgb(effectiveHex);
+    const isPureBlack = def?.isPureBlack || markerClass.toLowerCase().startsWith('group_');
+    const cleanHexId = effectiveHex.replace('#', '').toLowerCase();
+    const filterId = `arma-m-${cleanHexId}-${isPureBlack ? 'blk' : 'std'}`;
+
+    const matrixValues = isPureBlack
+        ? `0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  0 0 0 1 0`
+        : `${r} 0 0 0 0  0 ${g} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0`;
+
+    return `<div style="transform:translate(-${Math.round(sizePx / 2)}px, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;">
+      <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 28 28" style="transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.55));overflow:visible;">
+        <defs>
+          <filter id="${filterId}" color-interpolation-filters="sRGB">
+            <feColorMatrix type="matrix" values="${matrixValues}" />
+          </filter>
+        </defs>
+        <image href="/api/assets/icon/${encodeURIComponent(markerClass)}" x="0" y="0" width="28" height="28" filter="url(#${filterId})" />
+      </svg>
+      ${
+          safeText
+              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
+              : ''
+      }
+    </div>`;
   }
 
-  let inner = '';
-  if (idx === 0 || idx === 18) {
-    inner = `<circle cx="14" cy="14" r="9" fill="none" stroke="${colorHex}" stroke-width="2.4"/>
-      <line x1="7" y1="7" x2="21" y2="21" stroke="${colorHex}" stroke-width="2.2"/>
-      <line x1="21" y1="7" x2="7" y2="21" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 1 || idx === 29) {
-    inner = `<rect x="7" y="5" width="7" height="12" fill="none" stroke="${colorHex}" stroke-width="2.2"/>
-      <line x1="7" y1="17" x2="7" y2="25" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 2 || idx === 19) {
-    inner = `<path d="M8 24V5h12l-3 5 3 5H8" fill="none" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 3 || idx === 20) {
-    inner = `<path d="M14 4L7 12h4v12h6V12h4L14 4z" fill="none" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 4) {
-    inner = `<path d="M14 3L6 12h5v13h6V12h5L14 3z" fill="${colorHex}" stroke="#000" stroke-width="1"/>`;
-  } else if (idx === 5 || idx === 21) {
-    inner = `<line x1="4" y1="14" x2="20" y2="14" stroke="${colorHex}" stroke-width="2.4"/>
-      <line x1="20" y1="6" x2="20" y2="22" stroke="${colorHex}" stroke-width="2.5"/>
-      <path d="M14 10l6 4-6 4" fill="none" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 6 || idx === 23) {
-    inner = `<line x1="14" y1="4" x2="14" y2="24" stroke="${colorHex}" stroke-width="2.4"/>
-      <line x1="4" y1="14" x2="24" y2="14" stroke="${colorHex}" stroke-width="2.4"/>`;
-  } else if (idx === 7 || idx === 8 || idx === 9 || idx === 10 || idx === 24 || idx === 25 || idx === 26) {
-    inner = `<path d="M7 14a7 7 0 1 0 14 0" fill="none" stroke="${colorHex}" stroke-width="2.3"/>
-      <line x1="14" y1="3" x2="14" y2="16" stroke="${colorHex}" stroke-width="2.3"/>
-      <path d="M10 8l4-5 4 5" fill="none" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 11 || idx === 27) {
-    inner = `<circle cx="14" cy="14" r="9.5" fill="none" stroke="${colorHex}" stroke-width="2.3"/>
-      <text x="14" y="19" text-anchor="middle" fill="${colorHex}" font-size="15" font-weight="bold">!</text>`;
-  } else if (idx === 12 || idx === 28) {
-    inner = `<circle cx="14" cy="14" r="9.5" fill="none" stroke="${colorHex}" stroke-width="2.3"/>
-      <text x="14" y="19" text-anchor="middle" fill="${colorHex}" font-size="14" font-weight="bold">?</text>`;
-  } else if (idx === 13 || idx === 15) {
-    inner = `<circle cx="14" cy="14" r="4.5" fill="${colorHex}" stroke="#fff" stroke-width="1.5"/>`;
-  } else if (idx === 14) {
-    inner = `<circle cx="14" cy="14" r="9" fill="none" stroke="${colorHex}" stroke-width="2.5"/>`;
-  } else if (idx === 16) {
-    inner = `<rect x="9" y="9" width="10" height="10" fill="${colorHex}" stroke="#fff" stroke-width="1.2"/>`;
-  } else if (idx === 17 || idx === 107) {
-    inner = `<polygon points="14,5 5,22 23,22" fill="none" stroke="${colorHex}" stroke-width="2.2"/>`;
-  } else if (idx === 22) {
-    inner = `<line x1="5" y1="5" x2="23" y2="23" stroke="${colorHex}" stroke-width="2.3"/>
-      <line x1="23" y1="5" x2="5" y2="23" stroke="${colorHex}" stroke-width="2.3"/>
-      <line x1="14" y1="3" x2="14" y2="25" stroke="${colorHex}" stroke-width="2"/>`;
-  } else if (idx >= 30 && idx <= 94) {
-    const isDiamond = idx === 31 || idx === 34 || (idx >= 53 && idx <= 68);
-    const isSquare = idx === 32 || idx === 35 || (idx >= 69 && idx <= 74);
-
-    let frame = `<rect x="3" y="6" width="22" height="16" fill="${colorHex}" fill-opacity="0.82" stroke="#0f172a" stroke-width="2"/>`;
-    if (isDiamond) {
-      frame = `<polygon points="14,2 26,14 14,26 2,14" fill="${colorHex}" fill-opacity="0.82" stroke="#0f172a" stroke-width="2"/>`;
-    } else if (isSquare) {
-      frame = `<rect x="5" y="5" width="18" height="18" fill="${colorHex}" fill-opacity="0.82" stroke="#0f172a" stroke-width="2"/>`;
-    }
-
-    let sym = '';
-    const mod = idx % 15;
-    if ([33, 34, 35, 75].includes(idx) || mod === 3) {
-      sym = `<line x1="4" y1="6" x2="24" y2="22" stroke="#0f172a" stroke-width="2"/><line x1="24" y1="6" x2="4" y2="22" stroke="#0f172a" stroke-width="2"/>`;
-    } else if ([36, 53, 69].includes(idx) || mod === 6) {
-      sym = `<line x1="4" y1="6" x2="24" y2="22" stroke="#0f172a" stroke-width="1.8"/><line x1="24" y1="6" x2="4" y2="22" stroke="#0f172a" stroke-width="1.8"/><line x1="14" y1="6" x2="14" y2="22" stroke="#0f172a" stroke-width="1.8"/>`;
-    } else if ([37, 54, 70].includes(idx) || mod === 7) {
-      sym = `<line x1="4" y1="6" x2="24" y2="22" stroke="#0f172a" stroke-width="1.6"/><line x1="24" y1="6" x2="4" y2="22" stroke="#0f172a" stroke-width="1.6"/><ellipse cx="14" cy="14" rx="6.5" ry="3.8" fill="none" stroke="#0f172a" stroke-width="1.8"/>`;
-    } else if ([38, 55, 71].includes(idx) || mod === 8) {
-      sym = `<ellipse cx="14" cy="14" rx="7" ry="4" fill="none" stroke="#0f172a" stroke-width="2"/>`;
-    } else if ([39, 56, 72].includes(idx) || mod === 9) {
-      sym = `<line x1="4" y1="22" x2="24" y2="6" stroke="#0f172a" stroke-width="2.2"/>`;
-    } else if ([40, 57, 73].includes(idx) || mod === 10) {
-      sym = `<polygon points="7,10 21,18 21,10 7,18" fill="#0f172a"/>`;
-    } else if ([44, 61, 74].includes(idx) || mod === 14) {
-      sym = `<circle cx="14" cy="14" r="3.5" fill="#0f172a"/>`;
-    } else if ([45, 62].includes(idx)) {
-      sym = `<circle cx="14" cy="17" r="2.5" fill="#0f172a"/><line x1="14" y1="15" x2="14" y2="8" stroke="#0f172a" stroke-width="2"/>`;
-    } else if ([46, 63].includes(idx)) {
-      sym = `<line x1="4" y1="11" x2="24" y2="11" stroke="#0f172a" stroke-width="2"/>`;
-    } else if ([49, 66].includes(idx)) {
-      sym = `<line x1="14" y1="7" x2="14" y2="21" stroke="#0f172a" stroke-width="2.2"/><line x1="6" y1="14" x2="22" y2="14" stroke="#0f172a" stroke-width="2.2"/>`;
-    }
-    inner = `${frame}${sym}`;
-  } else if (idx === 103) {
-    inner = `<circle cx="14" cy="12" r="7" fill="${colorHex}" stroke="#0f172a" stroke-width="1.5"/>
-      <circle cx="11.5" cy="11" r="1.5" fill="#fff"/><circle cx="16.5" cy="11" r="1.5" fill="#fff"/>
-      <rect x="11" y="17" width="6" height="4" fill="${colorHex}" stroke="#0f172a" stroke-width="1.2"/>`;
-  } else if (idx === 108) {
-    inner = `<polygon points="14,4 4,23 24,23" fill="none" stroke="${colorHex}" stroke-width="2"/>
-      <circle cx="14" cy="13" r="1.8" fill="${colorHex}"/>
-      <circle cx="10" cy="19" r="1.8" fill="${colorHex}"/>
-      <circle cx="18" cy="19" r="1.8" fill="${colorHex}"/>`;
-  } else {
-    inner = `<circle cx="14" cy="14" r="9" fill="none" stroke="${colorHex}" stroke-width="2.2"/>
-      <circle cx="14" cy="14" r="3" fill="${colorHex}"/>`;
-  }
-
+  // Фоллбэк только если для редкого маркера (напр. из DLC Laws of War) нет PNG в папке arma-icons
   return `<div style="transform:translate(-${Math.round(sizePx / 2)}px, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;">
     <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 28 28" style="transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.65));overflow:visible;">
-      ${inner}
+      <circle cx="14" cy="14" r="9" fill="none" stroke="${effectiveHex}" stroke-width="2.2"/>
+      <circle cx="14" cy="14" r="3" fill="${effectiveHex}"/>
     </svg>
     ${
-      safeText
-          ? `<span style="color:${colorHex};background:rgba(255,255,255,0.82);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
-          : ''
-  }
+        safeText
+            ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
+            : ''
+    }
   </div>`;
 }
 
@@ -497,6 +394,8 @@ export default function App() {
   const [selectedSide, setSelectedSide] = useState<string>('');
 
   const [assetNames, setAssetNames] = useState<Record<string, string>>({});
+  const [markerCatalog, setMarkerCatalog] = useState<SwtMarkerTypeDef[]>(DEFAULT_SWT_MARKER_TYPES);
+  const [colorCatalog, setColorCatalog] = useState<SwtColorDef[]>(DEFAULT_SWT_COLORS);
 
   const [unitAssignments, setUnitAssignments] = useState<Record<number, string>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
@@ -506,7 +405,7 @@ export default function App() {
 
   const [planMarkers, setPlanMarkers] = useState<SwtPlanMarker[]>([]);
   const [activeColorSwtIdx, setActiveColorSwtIdx] = useState<number>(12);
-  const [activeTypeSwtIdx, setActiveTypeSwtIdx] = useState<number>(33);
+  const [activeTypeSwtIdx, setActiveTypeSwtIdx] = useState<number>(63); // 63 = b_inf в дампе Arma 3
   const [activeMarkerScale, setActiveMarkerScale] = useState<number>(1.0);
   const [activeMarkerAngle, setActiveMarkerAngle] = useState<number>(0);
   const [swtArrayText, setSwtArrayText] = useState('');
@@ -534,15 +433,46 @@ export default function App() {
 
   const hoveredMarkerIdRef = useRef<string | null>(null);
   const activeColorRef = useRef(activeColorSwtIdx);
+  const activeTypeRef = useRef(activeTypeSwtIdx);
+  const activeScaleRef = useRef(activeMarkerScale);
+  const activeAngleRef = useRef(activeMarkerAngle);
+  const colorCatalogRef = useRef(colorCatalog);
+
   useEffect(() => {
     activeColorRef.current = activeColorSwtIdx;
   }, [activeColorSwtIdx]);
+  useEffect(() => {
+    activeTypeRef.current = activeTypeSwtIdx;
+  }, [activeTypeSwtIdx]);
+  useEffect(() => {
+    activeScaleRef.current = activeMarkerScale;
+  }, [activeMarkerScale]);
+  useEffect(() => {
+    activeAngleRef.current = activeMarkerAngle;
+  }, [activeMarkerAngle]);
+  useEffect(() => {
+    colorCatalogRef.current = colorCatalog;
+  }, [colorCatalog]);
 
   useEffect(() => {
     fetch('/api/assets/catalog')
         .then(r => (r.ok ? r.json() : null))
         .then(dict => {
           if (dict) setAssetNames(dict);
+        })
+        .catch(() => {});
+
+    fetch('/api/assets/markers')
+        .then(r => (r.ok ? r.json() : null))
+        .then((data: { markers?: SwtMarkerTypeDef[]; colors?: SwtColorDef[] } | null) => {
+          if (data?.markers && data.markers.length > 0) {
+            setMarkerCatalog(data.markers);
+            const bInf = data.markers.find(m => m.id.toLowerCase() === 'b_inf');
+            if (bInf) setActiveTypeSwtIdx(bInf.swtIdx);
+          }
+          if (data?.colors && data.colors.length > 0) {
+            setColorCatalog(data.colors);
+          }
         })
         .catch(() => {});
 
@@ -553,6 +483,16 @@ export default function App() {
         })
         .catch(() => {});
   }, []);
+
+  const selectableSwtMarkers = useMemo(() => {
+    return markerCatalog.filter(m => {
+      const lower = m.id.toLowerCase();
+      if (lower === 'empty' || lower === 'emptyicon' || lower === 'ace_markers_textonly') return false;
+      if (lower.endsWith('_noshadow')) return false;
+      if (m.hasIcon === false) return false;
+      return true;
+    });
+  }, [markerCatalog]);
 
   const formatClassTitle = (cls?: string) => {
     if (!cls) return '—';
@@ -798,7 +738,7 @@ export default function App() {
           scaleY = sizeOrDims;
         }
 
-        const colorDef = getSwtColorByIdx(colorIdx);
+        const colorDef = getSwtColorByIdx(colorIdx, colorCatalog);
         imported.push({
           id: crypto.randomUUID(),
           text,
@@ -806,7 +746,7 @@ export default function App() {
           y,
           swtTypeIndex: typeIdx,
           swtColorIndex: colorIdx,
-          color: colorDef.hex,
+          color: colorIdx === 0 ? 'Default' : colorDef.hex,
           angle: Number.isFinite(angle) ? angle : 0,
           scaleX: Number.isFinite(scaleX) ? scaleX : 1,
           scaleY: Number.isFinite(scaleY) ? scaleY : 1,
@@ -937,24 +877,25 @@ export default function App() {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
 
       const angle = Number((m as any).angle ?? (m as any).Angle ?? (m as any).dir ?? 0);
-      const colorHex = getMissionMarkerColorHex(m.colorName);
+      const colorHexOrDefault = getMissionMarkerColorHex(m.colorName, colorCatalog);
+      const shapeColorHex = colorHexOrDefault === 'Default' ? '#0f172a' : colorHexOrDefault;
       const alpha = m.alpha ?? 1;
 
       if (m.markerType === 'RECTANGLE') {
         const corners = getRotatedRectLatLngs(x, y, m.widthA || 1, m.heightB || 1, angle);
         L.polygon(corners, {
-          color: colorHex,
+          color: shapeColorHex,
           weight: 2,
-          fillColor: colorHex,
+          fillColor: shapeColorHex,
           fillOpacity: 0.25 * alpha,
           interactive: false,
         }).addTo(map);
       } else if (m.markerType === 'ELLIPSE') {
         const pts = getRotatedEllipseLatLngs(x, y, m.widthA || 1, m.heightB || 1, angle);
         L.polygon(pts, {
-          color: colorHex,
+          color: shapeColorHex,
           weight: 2,
-          fillColor: colorHex,
+          fillColor: shapeColorHex,
           fillOpacity: 0.25 * alpha,
           interactive: false,
         }).addTo(map);
@@ -966,7 +907,7 @@ export default function App() {
           className: '',
           iconSize: [0, 0],
           iconAnchor: [0, 0],
-          html: renderMarkerHtml(m.iconType || 'hd_dot', colorHex, m.text, angle, 0.85),
+          html: renderMarkerHtml(m.iconType || 'hd_dot', colorHexOrDefault, m.text, angle, 0.85, markerCatalog),
         });
         L.marker([y, x], { icon, interactive: false }).addTo(map);
       }
@@ -1035,10 +976,10 @@ export default function App() {
         screenX: Math.max(10, Math.min(screenX, (containerRect?.width ?? 800) - 310)),
         screenY: Math.max(10, Math.min(screenY, (containerRect?.height ?? 600) - 360)),
         text: '',
-        swtTypeIdx: activeTypeSwtIdx,
+        swtTypeIdx: activeTypeRef.current,
         swtColorIdx: activeColorRef.current,
-        scale: activeMarkerScale,
-        angle: activeMarkerAngle,
+        scale: activeScaleRef.current,
+        angle: activeAngleRef.current,
       });
     });
 
@@ -1051,7 +992,7 @@ export default function App() {
     const redrawPreview = () => {
       previewLayer.clearLayers();
       if (!drawMode || !startPt || !currentPt) return;
-      const colorHex = getSwtColorByIdx(activeColorRef.current).hex;
+      const colorHex = getSwtColorByIdx(activeColorRef.current, colorCatalogRef.current).hex;
 
       if (drawMode === 'freeLine' || drawMode === 'straightLine') {
         const latlngs: [number, number][] = [];
@@ -1122,7 +1063,7 @@ export default function App() {
       map.dragging.enable();
 
       const colorIdx = activeColorRef.current;
-      const colorHex = getSwtColorByIdx(colorIdx).hex;
+      const colorHex = getSwtColorByIdx(colorIdx, colorCatalogRef.current).hex;
 
       if (mode === 'freeLine' || mode === 'straightLine') {
         if (coordsCopy.length >= 4) {
@@ -1255,7 +1196,7 @@ export default function App() {
       map.remove();
       leafletMapRef.current = null;
     };
-  }, [activeTab, mission, mapConfig, tileAlignMode]);
+  }, [activeTab, mission, mapConfig, tileAlignMode, markerCatalog, colorCatalog]);
 
   useEffect(() => {
     const layer = planLayerGroupRef.current;
@@ -1277,8 +1218,9 @@ export default function App() {
         }
         if (latlngs.length < 2) return;
 
+        const polyColor = m.color === 'Default' ? '#000000' : m.color;
         const poly = L.polyline(latlngs, {
-          color: m.color,
+          color: polyColor,
           weight: 4,
           opacity: 0.95,
         }).addTo(layer);
@@ -1337,9 +1279,10 @@ export default function App() {
                 ? getRotatedRectLatLngs(m.x, m.y, m.scaleX || 20, m.scaleY || 20, m.angle || 0)
                 : getRotatedEllipseLatLngs(m.x, m.y, m.scaleX || 20, m.scaleY || 20, m.angle || 0);
 
+        const shapeColor = m.color === 'Default' ? '#000000' : m.color;
         const shape = L.polygon(pts, {
-          color: m.color,
-          fillColor: m.color,
+          color: shapeColor,
+          fillColor: shapeColor,
           fillOpacity: 0.45,
           weight: 2,
         }).addTo(layer);
@@ -1397,7 +1340,7 @@ export default function App() {
         className: '',
         iconSize: [0, 0],
         iconAnchor: [0, 0],
-        html: renderMarkerHtml(m.swtTypeIndex, m.color, m.text, m.angle, m.scaleX || 1),
+        html: renderMarkerHtml(m.swtTypeIndex, m.swtColorIndex === 0 ? 'Default' : m.color, m.text, m.angle, m.scaleX || 1, markerCatalog),
       });
 
       const marker = L.marker([m.y, m.x], { icon }).addTo(layer);
@@ -1445,11 +1388,11 @@ export default function App() {
         map.on('mouseup', onUp);
       });
     });
-  }, [planMarkers, activeTab, mapConfig, tileAlignMode]);
+  }, [planMarkers, activeTab, mapConfig, tileAlignMode, markerCatalog]);
 
   const confirmPopupMarker = () => {
     if (!popupModal) return;
-    const colorDef = getSwtColorByIdx(popupModal.swtColorIdx);
+    const colorDef = getSwtColorByIdx(popupModal.swtColorIdx, colorCatalog);
     setPlanMarkers(prev => [
       ...prev,
       {
@@ -1459,7 +1402,7 @@ export default function App() {
         y: popupModal.y,
         swtTypeIndex: popupModal.swtTypeIdx,
         swtColorIndex: popupModal.swtColorIdx,
-        color: colorDef.hex,
+        color: popupModal.swtColorIdx === 0 ? 'Default' : colorDef.hex,
         angle: popupModal.angle,
         scaleX: popupModal.scale,
         scaleY: popupModal.scale,
@@ -1730,7 +1673,15 @@ export default function App() {
 
                                   {isExpanded && (
                                       <div className="border-t border-slate-800 bg-slate-950/50 divide-y divide-slate-800/60">
-                                        {group.units.map((u, idx) => (
+                                        {group.units.map((u, idx) => {
+                                          const hasRandomGear =
+                                              (u.loadout.uniformVariants?.length ?? 0) > 1 ||
+                                              (u.loadout.vestVariants?.length ?? 0) > 1 ||
+                                              (u.loadout.backpackVariants?.length ?? 0) > 1 ||
+                                              (u.loadout.headgearVariants?.length ?? 0) > 1 ||
+                                              (u.loadout.primaryWeaponVariants?.length ?? 0) > 1;
+
+                                          return (
                                             <div key={u.id} className="px-4 py-2 flex items-center justify-between gap-3 text-xs">
                                               <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
                                                 <span className="text-slate-500 w-4">{idx + 1}.</span>
@@ -1741,6 +1692,11 @@ export default function App() {
                                                     <span className="inline-flex items-center gap-1.5 bg-slate-900 border border-slate-800 text-sky-300 px-2 py-0.5 rounded font-mono text-[11px]">
                                         <ClassIcon classNameStr={u.primaryWeapon} size="h-4 w-auto max-w-[38px]" />
                                         <span>{assetNames[u.primaryWeapon] || u.primaryWeapon}</span>
+                                        {(u.loadout.primaryWeaponVariants?.length ?? 0) > 1 && (
+                                            <span className="text-[10px] text-purple-300" title={u.loadout.primaryWeaponVariants?.join(', ')}>
+                                              🎲x{u.loadout.primaryWeaponVariants?.length}
+                                            </span>
+                                        )}
                                       </span>
                                                 )}
                                                 {u.secondaryWeapon && (
@@ -1748,6 +1704,14 @@ export default function App() {
                                         <ClassIcon classNameStr={u.secondaryWeapon} size="h-4 w-auto max-w-[38px]" />
                                         <span>{assetNames[u.secondaryWeapon] || u.secondaryWeapon}</span>
                                       </span>
+                                                )}
+                                                {hasRandomGear && (
+                                                    <span
+                                                        className="inline-flex items-center gap-1 bg-purple-950/60 border border-purple-800/60 text-purple-300 px-1.5 py-0.5 rounded text-[10px]"
+                                                        title="У юнита есть рандомизируемые скриптом элементы снаряжения (форма/шлем/разгрузка/рюкзак)"
+                                                    >
+                                                      🎲 Рандом
+                                                    </span>
                                                 )}
                                               </div>
 
@@ -1769,7 +1733,8 @@ export default function App() {
                                                 />
                                               </div>
                                             </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                   )}
                                 </div>
@@ -1894,10 +1859,13 @@ export default function App() {
                                       dangerouslySetInnerHTML={{
                                         __html: renderMarkerHtml(
                                             popupModal.swtTypeIdx,
-                                            getSwtColorByIdx(popupModal.swtColorIdx).hex,
+                                            popupModal.swtColorIdx === 0
+                                                ? 'Default'
+                                                : getSwtColorByIdx(popupModal.swtColorIdx, colorCatalog).hex,
                                             popupModal.text || 'Превью',
                                             popupModal.angle,
-                                            popupModal.scale
+                                            popupModal.scale,
+                                            markerCatalog
                                         ),
                                       }}
                                   />
@@ -1920,7 +1888,9 @@ export default function App() {
                                 </div>
 
                                 <div>
-                                  <label className="block text-slate-400 mb-0.5">Вид иконки (SWT 0..112):</label>
+                                  <label className="block text-slate-400 mb-0.5">
+                                    Вид иконки (из дампа Arma 3, {selectableSwtMarkers.length} шт.):
+                                  </label>
                                   <select
                                       value={popupModal.swtTypeIdx}
                                       onChange={e =>
@@ -1928,16 +1898,16 @@ export default function App() {
                                       }
                                       className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none text-slate-100"
                                   >
-                                    {SWT_MARKER_TYPES.map(t => (
+                                    {selectableSwtMarkers.map(t => (
                                         <option key={t.swtIdx} value={t.swtIdx}>
-                                          {t.name}
+                                          {`#${t.swtIdx} — ${t.name} (${t.id})`}
                                         </option>
                                     ))}
                                   </select>
                                 </div>
 
                                 <div>
-                                  <label className="block text-slate-400 mb-0.5">Цвет:</label>
+                                  <label className="block text-slate-400 mb-0.5">Цвет (CfgMarkerColors):</label>
                                   <select
                                       value={popupModal.swtColorIdx}
                                       onChange={e =>
@@ -1945,7 +1915,7 @@ export default function App() {
                                       }
                                       className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none text-slate-100"
                                   >
-                                    {SWT_COLORS.map(c => (
+                                    {colorCatalog.map(c => (
                                         <option key={c.swtIdx} value={c.swtIdx}>
                                           {c.name}
                                         </option>
@@ -2035,7 +2005,7 @@ export default function App() {
                                 onChange={e => setActiveColorSwtIdx(Number(e.target.value))}
                                 className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 outline-none"
                             >
-                              {SWT_COLORS.map(c => (
+                              {colorCatalog.map(c => (
                                   <option key={c.swtIdx} value={c.swtIdx}>
                                     {c.name}
                                   </option>
@@ -2046,14 +2016,16 @@ export default function App() {
                           {planMarkers.length > 0 && (
                               <div className="max-h-36 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded bg-slate-950 p-2 text-xs">
                                 {planMarkers.map(m => {
-                                  let label = m.text || `Иконка #${m.swtTypeIndex}`;
+                                  const def = markerCatalog.find(t => t.swtIdx === m.swtTypeIndex);
+                                  let label = m.text || (def ? `${def.name} (#${m.swtTypeIndex})` : `Иконка #${m.swtTypeIndex}`);
                                   if (m.swtTypeIndex === -4) label = 'Линия';
                                   if (m.swtTypeIndex === -2) label = 'Параллелограмм';
                                   if (m.swtTypeIndex === -3) label = 'Эллипс';
 
+                                  const dispColor = m.color === 'Default' ? (def?.defaultColorHex || '#94a3b8') : m.color;
                                   return (
                                       <div key={m.id} className="py-1 flex items-center justify-between gap-2">
-                              <span style={{ color: m.color }} className="font-semibold truncate">
+                              <span style={{ color: dispColor }} className="font-semibold truncate">
                                 {label} [{Math.round(m.x)}, {Math.round(m.y)}]
                               </span>
                                         <button
@@ -2085,7 +2057,7 @@ export default function App() {
                             </div>
                             <textarea
                                 rows={3}
-                                placeholder='Вставьте массив SWT: [["",[7636.48,15159.1],0,12,0,1,"",[]]]'
+                                placeholder='Вставьте массив SWT: [["",[7636.48,15159.1],63,12,0,1,"",[]]]'
                                 value={swtArrayText}
                                 onChange={e => setSwtArrayText(e.target.value)}
                                 className="w-full bg-slate-950 border border-slate-800 rounded p-2 font-mono text-[11px] outline-none"
@@ -2133,15 +2105,45 @@ export default function App() {
                 {activeTab === 'briefing' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       <div className="lg:col-span-2 space-y-4">
-                        {mission.briefing.map((b, idx) => (
+                        {mission.briefing.map((b, idx) => {
+                          const formattedHtml = (b.htmlText || '')
+                              .replace(
+                                  /<marker\s+name\s*=\s*['"]([^'"]+)['"]\s*>([\s\S]*?)<\/marker>/gi,
+                                  '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 font-semibold text-xs" title="Маркер: $1">📍 $2</span>'
+                              )
+                              .replace(
+                                  /<img\s+([^>]*?)image\s*=\s*['"]([^'"]+)['"]([^>]*?)\/?>/gi,
+                                  (_match, pre, imgPath, post) => {
+                                    const cleanPath = String(imgPath).replace(/^\//, '').replace(/^\\/, '');
+                                    return `<img ${pre} src="/api/mission/image?path=${encodeURIComponent(cleanPath)}" class="inline-block max-w-full rounded my-1" ${post} />`;
+                                  }
+                              );
+
+                          return (
                             <div key={idx} className="border border-slate-800 rounded-xl bg-slate-900/60 p-5">
-                              <h3 className="text-base font-bold text-emerald-400 mb-3">{b.title}</h3>
+                              <div className="flex items-center gap-2 mb-3">
+                                <h3 className="text-base font-bold text-emerald-400">{b.title}</h3>
+                                {b.side && (
+                                    <span
+                                        className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                                            b.side === 'West'
+                                                ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                                                : b.side === 'East'
+                                                    ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                                                    : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                        }`}
+                                    >
+                                      {b.side}
+                                    </span>
+                                )}
+                              </div>
                               <div
                                   className="text-sm text-slate-300 leading-relaxed space-y-2 whitespace-pre-wrap"
-                                  dangerouslySetInnerHTML={{ __html: b.htmlText }}
+                                  dangerouslySetInnerHTML={{ __html: formattedHtml }}
                               />
                             </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       <div className="space-y-4">
@@ -2346,7 +2348,7 @@ export default function App() {
             >
               <div
                   onClick={e => e.stopPropagation()}
-                  className="bg-slate-900 border border-slate-700 rounded-xl max-w-xl w-full p-5 space-y-4 text-xs"
+                  className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-5 space-y-4 text-xs"
               >
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div>
@@ -2362,24 +2364,88 @@ export default function App() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-950 p-3 rounded border border-slate-800">
                   {[
-                    { label: 'Основное', val: inspectedUnit.primaryWeapon, color: 'text-sky-300' },
-                    { label: 'Труба/ПТ', val: inspectedUnit.secondaryWeapon, color: 'text-amber-300' },
-                    { label: 'Пистолет', val: inspectedUnit.handgun, color: 'text-slate-200' },
-                    { label: 'Форма', val: inspectedUnit.loadout.uniform, color: 'text-slate-200' },
-                    { label: 'Разгрузка', val: inspectedUnit.loadout.vest, color: 'text-slate-200' },
-                    { label: 'Рюкзак', val: inspectedUnit.loadout.backpack, color: 'text-slate-200' },
-                    { label: 'Шлем', val: inspectedUnit.loadout.headgear, color: 'text-slate-200' },
-                  ].map(slot => (
-                      <div key={slot.label} className="flex items-center gap-2 bg-slate-900/70 p-1.5 rounded border border-slate-800/80">
-                        <ClassIcon classNameStr={slot.val} size="h-7 w-10" />
-                        <div className="min-w-0">
-                          <div className="text-[10px] text-slate-500">{slot.label}:</div>
-                          <div className={`font-mono font-semibold truncate ${slot.color}`} title={slot.val}>
-                            {formatClassTitle(slot.val)}
+                    {
+                      label: 'Основное',
+                      val: inspectedUnit.primaryWeapon,
+                      variants: inspectedUnit.loadout.primaryWeaponVariants,
+                      color: 'text-sky-300',
+                    },
+                    {
+                      label: 'Труба/ПТ',
+                      val: inspectedUnit.secondaryWeapon,
+                      variants: inspectedUnit.loadout.secondaryWeaponVariants,
+                      color: 'text-amber-300',
+                    },
+                    {
+                      label: 'Пистолет',
+                      val: inspectedUnit.handgun,
+                      variants: inspectedUnit.loadout.handgunVariants,
+                      color: 'text-slate-200',
+                    },
+                    {
+                      label: 'Форма',
+                      val: inspectedUnit.loadout.uniform,
+                      variants: inspectedUnit.loadout.uniformVariants,
+                      color: 'text-slate-200',
+                    },
+                    {
+                      label: 'Разгрузка',
+                      val: inspectedUnit.loadout.vest,
+                      variants: inspectedUnit.loadout.vestVariants,
+                      color: 'text-slate-200',
+                    },
+                    {
+                      label: 'Рюкзак',
+                      val: inspectedUnit.loadout.backpack,
+                      variants: inspectedUnit.loadout.backpackVariants,
+                      color: 'text-slate-200',
+                    },
+                    {
+                      label: 'Шлем',
+                      val: inspectedUnit.loadout.headgear,
+                      variants: inspectedUnit.loadout.headgearVariants,
+                      color: 'text-slate-200',
+                    },
+                    {
+                      label: 'Очки/Маска',
+                      val: inspectedUnit.loadout.goggles,
+                      variants: inspectedUnit.loadout.gogglesVariants,
+                      color: 'text-slate-200',
+                    },
+                  ].map(slot => {
+                    const isRandom = (slot.variants?.length ?? 0) > 1;
+                    return (
+                        <div key={slot.label} className="bg-slate-900/70 p-2 rounded border border-slate-800/80 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <ClassIcon classNameStr={slot.val} size="h-7 w-10" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[10px] text-slate-500">{slot.label}:</span>
+                                {isRandom && (
+                                    <span className="bg-purple-950 text-purple-300 border border-purple-700/70 px-1.5 py-0.2 rounded text-[10px] font-semibold">
+                                      🎲 Рандом ({slot.variants!.length} вар.)
+                                    </span>
+                                )}
+                              </div>
+                              <div className={`font-mono font-semibold truncate ${slot.color}`} title={slot.val}>
+                                {formatClassTitle(slot.val)}
+                              </div>
+                            </div>
                           </div>
+
+                          {isRandom && slot.variants && (
+                              <div className="max-h-28 overflow-y-auto divide-y divide-slate-800/60 bg-slate-950/80 rounded border border-slate-800/80 px-2 py-1 space-y-0.5">
+                                {slot.variants.map(vCls => (
+                                    <div key={vCls} className="py-0.5 flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                                      <ClassIcon classNameStr={vCls} size="h-4 w-6" />
+                                      <span className="truncate" title={vCls}>{formatClassTitle(vCls)}</span>
+                                    </div>
+                                ))}
+                              </div>
+                          )}
                         </div>
-                      </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {inspectedUnit.loadout.weaponAttachments.length > 0 && (
@@ -2391,6 +2457,20 @@ export default function App() {
                       <ClassIcon classNameStr={a} size="h-5 w-7" />
                       <span>{formatClassTitle(a)}</span>
                     </span>
+                        ))}
+                      </div>
+                    </div>
+                )}
+
+                {inspectedUnit.loadout.linkedItems.length > 0 && (
+                    <div>
+                      <div className="font-semibold text-slate-400 mb-1">Спецсредства, бинокли и навигация:</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {inspectedUnit.loadout.linkedItems.map(item => (
+                            <span key={item} className="inline-flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/60 px-2 py-1 rounded font-mono text-slate-200">
+                              <ClassIcon classNameStr={item} size="h-5 w-7" />
+                              <span>{formatClassTitle(item)}</span>
+                            </span>
                         ))}
                       </div>
                     </div>

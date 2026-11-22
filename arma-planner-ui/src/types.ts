@@ -69,6 +69,7 @@ export interface WmtPointInfo {
 
 export interface BriefingSection {
     title: string;
+    side?: string;
     htmlText: string;
 }
 
@@ -76,6 +77,7 @@ export interface SquadGroup {
     id: number;
     side: string;
     callSign: string;
+    editorCallSign?: string;
     squadDescription: string;
     units: SquadUnit[];
 }
@@ -100,6 +102,14 @@ export interface UnitLoadout {
     backpack: string;
     headgear: string;
     goggles: string;
+    uniformVariants?: string[];
+    vestVariants?: string[];
+    backpackVariants?: string[];
+    headgearVariants?: string[];
+    gogglesVariants?: string[];
+    primaryWeaponVariants?: string[];
+    secondaryWeaponVariants?: string[];
+    handgunVariants?: string[];
     weaponAttachments: string[];
     linkedItems: string[];
     itemsAndMagazines: Record<string, number>;
