@@ -1,6 +1,7 @@
 import {shortRole,sideColor,initialVehicleSide} from './planning-units.mjs';
 import {boardingGhostMesh} from './planning-ghost.mjs';
 import {ViewshedSurface} from './viewshed-surface.mjs';
+import {VisibilityQuery,observerPoint,inViewSphere} from './visibility-volume.mjs';
 import {terrainGridHit} from './wog/terrain-ray.js';
 import {coarseNormalAt} from './wog/terrain-join.js';
 import {waterSurface} from './wog/water-surface.js';
@@ -19,7 +20,7 @@ import {TerrainDetail} from './wog/terrain-detail.js';
 import {terrainHeight} from './wog/replay-math.js';
 import {lightScene,terrainMaterial,sceneryMaterial} from './wog/scene-lighting.js';
 import {TerrainRoads} from './wog/terrain-roads.js';
-import {terrainVisible,sqmPoint,distance,configuredProfile} from './core.mjs';
+import {sqmPoint,distance,configuredProfile} from './core.mjs';
 export async function json(url){const r=await fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`${url}: ${r.status}`);return r.json();}
 const pause=()=>new Promise(r=>setTimeout(r,0));
 export class PlanningScene {
@@ -161,23 +162,27 @@ export class PlanningScene {
     return {meshes,missing,step:env.world.tileSize};
   }
   async visibility(p,eye,radius,token){
-    const from=[p[0],p[1],Math.max(p[2],this.surfaceHeight(p[0],p[1]))+eye],snapshot=await this.visibleSceneSnapshot();
-    const points=[],colors=[],origin=this.vec(from),ray=new T.Raycaster(),step=radius/40;const n=81,values=new Int8Array(n*n).fill(-1);let count=0,unknown=0;
-    for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++){
+    radius=Number(radius);if(!(radius>0&&radius<=50000))throw Error('Некорректная дальность обзора');
+    const snapshot=await this.visibleSceneSnapshot(),from=observerPoint(p,eye,(x,y)=>this.surfaceHeight(x,y)),origin=this.vec(from);
+    const unknownBoxes=snapshot.missing.map(t=>new T.Box3(new T.Vector3(t.x*snapshot.step-this.half,-1e7,this.half-(t.y+1)*snapshot.step),new T.Vector3((t.x+1)*snapshot.step-this.half,1e7,this.half-t.y*snapshot.step)));
+    const known=snapshot.meshes.filter(m=>!m.userData.unit?.missing);
+    for(const mesh of snapshot.meshes.filter(m=>m.userData.unit?.missing)){mesh.geometry.computeBoundingBox();unknownBoxes.push(mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld).expandByScalar(5));}
+    const detailMesh=this.detail.mesh,blend=this.detail.blend.value,contains=(x,y)=>detailMesh&&this.detail.contains(x,y);
+    const terrain=ray=>[terrainGridHit(ray,this.ground,{accept:q=>!contains(q.x+this.half,this.half-q.z)}),terrainGridHit(ray,detailMesh,{blend})].filter(Boolean).sort((a,b)=>a.distance-b.distance)[0];
+    const query=new VisibilityQuery(known,terrain,unknownBoxes),n=81,values=new Int8Array(n*n).fill(-1);let count=0,unknown=0;
+    // All directions, including uphill/downhill, use the same 3D ray query.
+    // Only the terrain projection is drawn. Range is a sphere, not an XY disc.
+    this.calculatingVisibility=true;
+    try{for(let iy=0;iy<n;iy++)for(let ix=0;ix<n;ix++){
+      if(token.cancelled)return null;
       const ux=(ix-40)/40,uy=(iy-40)/40,x=p[0]+Math.sign(ux)*ux*ux*radius,y=p[1]+Math.sign(uy)*uy*uy*radius;
-      if(token.cancelled)return null;if(Math.hypot(x-p[0],y-p[1])>radius)continue;
-      const h=this.height(x,y);if(!Number.isFinite(h))continue;const target=[x,y,h+1.7];
-      let visible=terrainVisible(from,target,(x,y)=>this.surfaceHeight(x,y),this.detail.meta.cellSize/2);
-      const minX=Math.min(x,p[0]),maxX=Math.max(x,p[0]),minY=Math.min(y,p[1]),maxY=Math.max(y,p[1]);
-      const intersects=(x0,y0,x1,y1)=>{let lo=0,hi=1;for(const [a,d,min,max]of [[p[0],x-p[0],x0,x1],[p[1],y-p[1],y0,y1]]){if(Math.abs(d)<1e-9){if(a<min||a>max)return false;}else{const a0=(min-a)/d,b0=(max-a)/d;lo=Math.max(lo,Math.min(a0,b0));hi=Math.min(hi,Math.max(a0,b0));if(lo>hi)return false;}}return true;};
-      const incomplete=snapshot.missing.some(t=>intersects(t.x*snapshot.step,t.y*snapshot.step,(t.x+1)*snapshot.step,(t.y+1)*snapshot.step))||this.missionMeshes.some(m=>m.userData.unit?.missing&&intersects(m.position.x+this.half-5,this.half-m.position.z-5,m.position.x+this.half+5,this.half-m.position.z+5));
-      if(visible){const v=this.vec(target),d=v.clone().sub(origin),len=d.length();ray.set(origin,d.normalize());ray.near=.3;ray.far=len-.3;
-        if(ray.intersectObjects(snapshot.meshes,false).length)visible=false;}
-      if(visible!==false&&incomplete||visible===null)unknown++;values[iy*n+ix]=visible===false?0:incomplete||visible===null?2:1;
-      points.push([x,y,h+.6]);colors.push(visible?(incomplete?0x94a3b8:0x34d399):0xef6666);
-      if(++count%24===0)await pause();
-    }
-    return {points,colors,incomplete:unknown,step,values,n,x:p[0],y:p[1],radius};
+      if(x<0||y<0||x>this.terrain.worldSize||y>this.terrain.worldSize)continue;
+      const h=this.surfaceHeight(x,y),target=[x,y,h+.05];if(!Number.isFinite(h)||!inViewSphere(from,target,radius))continue;
+      const delta=this.vec(target).sub(origin),length=delta.length(),hit=query.cast(origin,delta.normalize(),Math.max(0,length-.05));
+      const value=hit.solid<length-.05?0:hit.unknown<length?2:1;values[iy*n+ix]=value;if(value===2)unknown++;
+      if(++count%32===0){this.status(`Обзор с высоты ${eye} м: ${Math.round((iy*n+ix)/(n*n)*100)}%`);await pause();}
+    }}finally{query.dispose();this.calculatingVisibility=false;}
+    return {incomplete:unknown,values,n,x:p[0],y:p[1],radius,origin:from,spherical:true};
   }
   setAssignments(assignments){this.assignments=assignments||{};this.labelsDirty=true;}
   boardingPreview(units,p){
@@ -202,7 +207,7 @@ export class PlanningScene {
     }
     this.labelState={entities,positions,drawn};this.labelsDirty=false;
   }
-  render(t){if(!this.ready||!this.container.clientWidth||!this.container.clientHeight)return;this.moveCamera(Math.min(.05,(t-(this.lastFrame||t))/1000));this.lastFrame=t;this.controls.update();this.maintainCamera();if(t-this.lastStream>250){this.lastStream=t;this.environment.update(this.controls.target,this.camera.position.distanceTo(this.controls.target),'high').catch(console.warn);this.detail.update(this.camera.position,false,true)?.catch?.(console.warn);this.roads.update(this.camera.position,this.controls.target,this.camera.position.distanceTo(this.controls.target));}this.environment.tick?.(t);this.detail.tick(t);if(this.actorsDirty){for(const u of this.units)this.updateActor(u);this.actorsDirty=false;}this.refreshDrapes();this.roads.tick(t);this.scene.updateMatrixWorld();this.camera.updateMatrixWorld();this.environment.shared.visibility.update(this.environment.shared.groups,this.camera);
+  render(t){if(!this.ready||!this.container.clientWidth||!this.container.clientHeight)return;this.moveCamera(Math.min(.05,(t-(this.lastFrame||t))/1000));this.lastFrame=t;this.controls.update();this.maintainCamera();if(!this.calculatingVisibility&&t-this.lastStream>250){this.lastStream=t;this.environment.update(this.controls.target,this.camera.position.distanceTo(this.controls.target),'high').catch(console.warn);this.detail.update(this.camera.position,false,true)?.catch?.(console.warn);this.roads.update(this.camera.position,this.controls.target,this.camera.position.distanceTo(this.controls.target));}this.environment.tick?.(t);this.detail.tick(t);if(this.actorsDirty){for(const u of this.units)this.updateActor(u);this.actorsDirty=false;}this.refreshDrapes();this.roads.tick(t);this.scene.updateMatrixWorld();this.camera.updateMatrixWorld();this.environment.shared.visibility.update(this.environment.shared.groups,this.camera);
     const w=this.container.clientWidth,h=this.container.clientHeight;if(this.labelsDirty||!this.labelState)this.rebuildLabelState();const {entities,positions,drawn}=this.labelState;
     this.labels.update({frame:0,viewport:{width:w,height:h},drawn,entities,positions,camera:this.camera,selected:this.selectedIds[0]??null,inspectedIds:this.selectedIds,enabled:true,sideColor:side=>({WEST:0x2389c5,EAST:0xe04c4c,GUER:0x35b46f,INDEPENDENT:0x35b46f}[side]||0xa9a365),entitySide:e=>e.side?.toUpperCase(),distance:this.controls.getDistance(),grouping:true});
     for(const wpt of this.waypoints.values()){const v=this.vec(wpt.p).project(this.camera);wpt.el.hidden=wpt.hidden||v.z< -1||v.z>1;wpt.el.style.left=(v.x*.5+.5)*w+'px';wpt.el.style.top=((-v.y*.5+.5)*h-50)+'px';}if(this.rulerGroup?.mid&&!this.rulerGroup.label.hidden){const v=this.rulerGroup.mid.clone().project(this.camera),el=this.rulerGroup.label;el.style.left=(v.x*.5+.5)*w+'px';el.style.top=(-v.y*.5+.5)*h+'px';el.style.visibility=v.z>=-1&&v.z<=1?'visible':'hidden';}this.renderer.render(this.scene,this.camera);}

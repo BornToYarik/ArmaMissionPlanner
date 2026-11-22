@@ -115,7 +115,7 @@ def rap(blob,config=False):
     return body(16)
 
 TOKEN=re.compile(r'\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:""|[^"\\]|\\.)*"|-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_$][\w$]*|[^\s]')
-def text_sqm(blob):
+def text_sqm(blob,config=False):
     text=blob.decode('utf-8-sig',errors='strict');tokens=[m.group() for m in TOKEN.finditer(text) if not m.group().isspace() and not m.group().startswith(('//','/*'))];i=0;nodes=0
     if len(tokens)>3000000:raise InvalidMission('sqm-size')
     def take(expect=None):
@@ -152,8 +152,10 @@ def text_sqm(blob):
             if name=='class':
                 name=take();inherit=''
                 if tokens[i]==':':take(':');inherit=take()
-                if tokens[i]==';':take(';');result[name]={'__inherit':inherit};continue
+                if tokens[i]==';':take(';');result[name]={'__inherit':inherit,**({'__external':True} if config else {})};continue
                 take('{');result[name]=block(depth+1,True);result[name]['__inherit']=inherit;take(';')
+            elif config and name=='delete':
+                name=take();take(';');result[name]={'__delete':True}
             else:
                 if tokens[i]=='[':take('[');take(']')
                 take('=');result[name]=val();take(';')

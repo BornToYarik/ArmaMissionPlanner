@@ -1,7 +1,7 @@
 """Read-only installed addon inspection. No SQF is executed or game file edited."""
 import copy, hashlib, json, struct
 from pathlib import Path
-from vendor.mission_parser import rap, InvalidMission
+from vendor.mission_parser import rap, text_sqm, InvalidMission
 
 def entries(path):
     with path.open('rb') as f:
@@ -23,7 +23,7 @@ def entries(path):
         offset=f.tell();prefix=props.get('prefix',path.stem).strip('\\').lower();out={}
         for name,h in rows:
             key=(prefix+'\\'+name.replace('/','\\')).strip('\\').lower()
-            if Path(name).suffix.lower() in ('.bin','.p3d','.paa','.pac','.rtm'):
+            if Path(name).suffix.lower() in ('.bin','.cpp','.p3d','.paa','.pac','.rtm'):
                 out[key]={'archive':str(path),'offset':offset,'size':h[4],'method':h[0],'rawSize':h[1]}
             offset+=h[4]
         return out
@@ -87,14 +87,16 @@ def scan(folders,cache,log):
     saved=cache/'config-index.json'
     if saved.exists():
         d=json.loads(saved.read_text('utf8'))
-        if d.get('signature')==signature and d.get('schema')==7:return d
+        if d.get('signature')==signature and d.get('schema')==8:return d
     index={};addons=[];errors=[]
     for i,p in enumerate(paths):
         try:
             contents=entries(p);index.update(contents)
             for name,e in contents.items():
-                if not name.endswith('\\config.bin'):continue
-                full=rap(read(e),config=True);patches=lower(next((v for k,v in full.items() if k.lower()=='cfgpatches'),{}))
+                if not name.endswith(('\\config.bin','\\config.cpp')):continue
+                if name.endswith('.cpp') and name[:-4]+'.bin' in contents:continue
+                full=rap(read(e),config=True) if name.endswith('.bin') else text_sqm(read(e),config=True)
+                patches=lower(next((v for k,v in full.items() if k.lower()=='cfgpatches'),{}))
                 vehicles=next((v for k,v in full.items() if k.lower()=='cfgvehicles'),{})
                 config={'cfgvehicles':{k.lower():vehicle_fields(v) for k,v in vehicles.items() if isinstance(v,dict)}}
                 addons.append({'path':str(p),'config':config,'patches':set(patches),'requires':{str(r).lower() for v in patches.values() if isinstance(v,dict) for r in v.get('requiredaddons',[])}})
@@ -146,7 +148,7 @@ def scan(folders,cache,log):
             if isinstance(cargo,(int,float)) and isinstance(driver,(int,float)):
                 seats=max(0,int(cargo))+int(driver>0)+turret_seats(c.get('turrets',{}))
         refs[name]={'sourceModel':model,'mobility':kind,'gameplay':kind!='static' or 'staticweapon' in ancestors,'maxSpeed':c.get('maxspeed'),'capacity':seats,'seatConfig':{k:c[k] for k in ['hasdriver','hasgunner','hascommander','transportsoldier','turrets'] if k in c},'displayName':c.get('displayname'),'enginePower':c.get('enginepower'),'peakTorque':c.get('peaktorque'),'brakeTorque':c.get('braketorque'),'source':'installed-addon-config','configSignature':signature}
-    out={'schema':7,'signature':signature,'classes':refs,'index':index,'errors':errors}
+    out={'schema':8,'signature':signature,'classes':refs,'index':index,'errors':errors}
     cache.mkdir(parents=True,exist_ok=True);saved.write_text(json.dumps(out,separators=(',',':')),encoding='utf8');return out
 
 def prepare_mission(store,mission,folders,quality,app,log):

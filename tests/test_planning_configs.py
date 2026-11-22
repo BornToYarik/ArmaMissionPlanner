@@ -2,7 +2,14 @@ import sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'companion'))
 from configs import merge,turret_seats
+from vendor.mission_parser import text_sqm
 class ConfigMergeTests(unittest.TestCase):
+ def test_plain_config_preserves_models_inheritance_and_declarations(self):
+  d=text_sqm(b'class CfgVehicles { class House_F; class Land_Qalat: House_F { model="\\praa\\praa_buildings\\qalat.p3d"; }; delete OldHouse; };',config=True)['CfgVehicles']
+  self.assertTrue(d['House_F']['__external'])
+  self.assertEqual(d['Land_Qalat']['__inherit'],'House_F')
+  self.assertEqual(d['Land_Qalat']['model'],r'\praa\praa_buildings\qalat.p3d')
+  self.assertTrue(d['OldHouse']['__delete'])
  def test_empty_turrets_replaces_parent_seats(self):
   self.assertEqual(merge({'turrets':{'mainturret':{'__inherit':'NewTurret'}}},{'turrets':{'__inherit':''}})['turrets'],{'__inherit':''})
  def test_extending_turrets_keeps_parent_and_applies_delete(self):

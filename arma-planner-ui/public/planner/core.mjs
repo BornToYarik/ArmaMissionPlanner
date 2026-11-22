@@ -1,3 +1,4 @@
+import {segmentClear,navigationNode} from './navigation-obstacles.mjs';
 // All distances are metres, times seconds, map coordinates east/north/ASL.
 // These are planning estimates, not Arma's vehicle simulation.
 export const profiles = Object.freeze({
@@ -71,7 +72,7 @@ export function cell(g,p){const x=Math.round((p[0]-g.x)/g.step),y=Math.round((p[
 export function point(g,i){return [g.x+(i%g.nx)*g.step,g.y+Math.floor(i/g.nx)*g.step,g.heights[i]];}
 function edge(g,a,b,ps,oldDir,newDir){
   const air=ps.every(p=>p.name===profiles.air.name),water=ps.every(p=>p.name===profiles.water.name);
-  if(!Number.isFinite(g.heights[b])||!air&&(g.blocked?.[b]||(water?g.heights[b]>0:g.heights[b]<0)))return Infinity;
+  if(!Number.isFinite(g.heights[b])||!air&&((g.edgeMasks?.[a]&(1<<newDir))||g.blocked?.[b]||(water?g.heights[b]>0:g.heights[b]<0)))return Infinity;
   const len=(newDir%2?Math.SQRT2:1)*g.step,grade=(g.heights[b]-g.heights[a])/len;
   let seconds=0;
   for(const p of ps){const v=speed(air||water?0:grade,g.roads?.[a]&&g.roads?.[b],p);if(!v)return Infinity;
@@ -84,8 +85,11 @@ function neighbors(g,a,air=false,water=false){const x=a%g.nx,y=Math.floor(a/g.nx
   const wrongSurface=i=>water?g.heights[i]>0:g.heights[i]<0;
   if(!air&&dx&&dy&&(g.blocked?.[y*g.nx+xx]||g.blocked?.[yy*g.nx+x]||wrongSurface(y*g.nx+xx)||wrongSurface(yy*g.nx+x)))continue;r.push([yy*g.nx+xx,d]);}return r;}
 export function route(g,from,to,ps,mode='free'){
-  const start=cell(g,from),end=cell(g,to);if(start<0||end<0)throw Error('Точка вне подготовленной карты');
-  if(g.blocked?.[start]||g.blocked?.[end])throw Error('Точка внутри препятствия');
+  if(cell(g,from)<0||cell(g,to)<0)throw Error('Точка вне подготовленной карты');
+  const air=ps.every(p=>p.name===profiles.air.name),water=ps.every(p=>p.name===profiles.water.name);
+  const start=g.polygons?navigationNode(g,from,air,water):cell(g,from),end=g.polygons?navigationNode(g,to,air,water):cell(g,to);
+  if(start<0||end<0)throw Error('Точка внутри препятствия или проход уже шага сетки');
+  if(!air&&(g.blocked?.[start]||g.blocked?.[end]))throw Error('Точка внутри препятствия');
   const roadMode=mode==='road';if(roadMode&&!g.roads?.some(Boolean))throw Error('Нет данных дорожной сети');
   const size=g.nx*g.ny*8,cost=new Float64Array(size).fill(Infinity),prev=new Int32Array(size).fill(-1),q=new Heap();
   const vmax=Math.min(...ps.map(p=>Math.max(p.road,p.offroad)*1.12));
@@ -93,7 +97,7 @@ export function route(g,from,to,ps,mode='free'){
   for(let d=0;d<8;d++){cost[start*8+d]=0;q.push([h(start),start*8+d,0]);}
   let found=-1;
   while(q.a.length){const [,s,paid]=q.pop();if(paid!==cost[s])continue;const a=s>>3,old=s%8;if(a===end){found=s;break;}
-    for(const [b,d] of neighbors(g,a)){
+    for(const [b,d] of neighbors(g,a,air,water)){
       // Road alternative allows access from the endpoints; off-road traversals
       // are penalised, never labelled as a road-only or exact optimal route.
       const penalty=roadMode&&!(g.roads[a]&&g.roads[b])?4:1;
@@ -105,20 +109,22 @@ export function route(g,from,to,ps,mode='free'){
   const ids=[];for(let k=found;k>=0;k=prev[k])ids.push(k>>3);ids.reverse();
   let path=ids.map(i=>point(g,i));
   // Keep sampled slopes and obstacles. Do not smooth a path through buildings.
-  if(path.length===1)path=[from,to];else {path[0]=from;path[path.length-1]=to;}
+  if(distance(from,path[0])>.001)path.unshift(from);else path[0]=from;
+  if(distance(to,path.at(-1))>.001)path.push(to);else path[path.length-1]=to;
   path=straightenRoute(g,path,ps,roadMode);
   return {points:path,seconds:travelTime(sampleRouteHeights(g,path),ps,(a,b)=>g.roads?.[cell(g,a)]&&g.roads?.[cell(g,b)]),mode,resolution:g.step};
 }
 // Preserve a straight XY line while sampling the hills it actually crosses.
+export function gridHeight(g,x,y){const fx=Math.max(0,Math.min(g.nx-1,(x-g.x)/g.step)),fy=Math.max(0,Math.min(g.ny-1,(y-g.y)/g.step)),ix=Math.floor(fx),iy=Math.floor(fy),jx=Math.min(ix+1,g.nx-1),jy=Math.min(iy+1,g.ny-1),a=fx-ix,b=fy-iy;return (g.heights[iy*g.nx+ix]*(1-a)+g.heights[iy*g.nx+jx]*a)*(1-b)+(g.heights[jy*g.nx+ix]*(1-a)+g.heights[jy*g.nx+jx]*a)*b;}
 export function sampleRouteHeights(g,path){
  const out=[];
- const height=(x,y)=>{const fx=Math.max(0,Math.min(g.nx-1,(x-g.x)/g.step)),fy=Math.max(0,Math.min(g.ny-1,(y-g.y)/g.step)),ix=Math.floor(fx),iy=Math.floor(fy),jx=Math.min(ix+1,g.nx-1),jy=Math.min(iy+1,g.ny-1),a=fx-ix,b=fy-iy;return (g.heights[iy*g.nx+ix]*(1-a)+g.heights[iy*g.nx+jx]*a)*(1-b)+(g.heights[jy*g.nx+ix]*(1-a)+g.heights[jy*g.nx+jx]*a)*b;};
- for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],n=Math.max(1,Math.ceil(distance(a,b)/(g.step/2)));for(let j=0;j<n;j++){const t=j/n,x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t;out.push([x,y,j?height(x,y):a[2]]);}}
+
+ for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],n=Math.max(1,Math.ceil(distance(a,b)/(g.step/2)));for(let j=0;j<n;j++){const t=j/n,x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t;out.push([x,y,j?gridHeight(g,x,y):a[2]]);}}
  if(path.length)out.push(path.at(-1));return out;
 }
 export function straightenRoute(g,path,ps,roadMode=false){
  if(path.length<3)return path;
- const sample=(a,b)=>{const n=Math.max(1,Math.ceil(distance(a,b)/(g.step/3))),out=[];let last=-1;
+ const sample=(a,b)=>{if(!segmentClear(g,a,b))return null;const n=Math.max(1,Math.ceil(distance(a,b)/(g.step/3))),out=[];let last=-1;
   for(let i=0;i<=n;i++){const f=i/n,x=a[0]+(b[0]-a[0])*f,y=a[1]+(b[1]-a[1])*f,k=cell(g,[x,y]);
    if(k<0||g.blocked[k]||!Number.isFinite(g.heights[k])||g.heights[k]<0)return null;
    if(last>=0&&k!==last){const ax=last%g.nx,ay=Math.floor(last/g.nx),bx=k%g.nx,by=Math.floor(k/g.nx);if(ax!==bx&&ay!==by&&(g.blocked[ay*g.nx+bx]||g.blocked[by*g.nx+ax]))return null;}
@@ -135,7 +141,7 @@ export function reachable(g,starts,seconds){
   const out=new Float32Array(g.nx*g.ny).fill(Infinity),groups=new Map();
   for(const s of starts){const key=JSON.stringify(s.profile);if(!groups.has(key))groups.set(key,{profile:s.profile,origins:[]});groups.get(key).origins.push(s.point);}
   for(const {profile,origins} of groups.values()){const ps=[profile],cost=new Float32Array(out.length*8).fill(Infinity),q=new Heap();
-    for(const p of origins){const i=cell(g,p);if(i<0)continue;for(let d=0;d<8;d++){cost[i*8+d]=0;q.push([0,i*8+d]);}}
+    for(const p of origins){if(cell(g,p)<0)throw Error('Точка вне подготовленной карты');const air=profile.name===profiles.air.name,water=profile.name===profiles.water.name,start=air?p:[p[0],p[1],gridHeight(g,p[0],p[1])],i=g.polygons?navigationNode(g,start,air,water,profile.slope):cell(g,p);if(i<0||!air&&g.blocked[i])throw Error('Старт внутри препятствия или проход уже шага сетки. Уточните стартовую позицию.');const q0=point(g,i),initial=distance(p,q0)<.001?0:travelTime([start,q0],ps);if(!Number.isFinite(initial))throw Error('Не найден проходимый выход из стартовой ячейки');for(let d=0;d<8;d++){cost[i*8+d]=initial;q.push([cost[i*8+d],i*8+d]);}}
     while(q.a.length){const [t,s]=q.pop();if(t>cost[s]+.001||t>seconds)continue;const a=s>>3;out[a]=Math.min(out[a],t);
       for(const [b,d] of neighbors(g,a,profile.name===profiles.air.name,profile.name===profiles.water.name)){const v=t+edge(g,a,b,ps,s%8,d),k=b*8+d;if(v<=seconds&&v<cost[k]){cost[k]=v;q.push([cost[k],k]);}}
     }
