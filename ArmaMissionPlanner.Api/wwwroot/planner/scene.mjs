@@ -1,4 +1,5 @@
 import {mapLimited} from './wog/resource-cache.js';
+import {assetJson,cachedRequest,retryAsset} from './asset-loading.mjs';
 import {observerObjectRange,clipObserverObjects} from './object-range.mjs';
 import {waypointTop} from './waypoint-layout.mjs';
 import {EyeOptics,zoomFov} from './eye-optics.mjs';
@@ -34,7 +35,7 @@ import {terrainHeight} from './wog/replay-math.js';
 import {lightScene,terrainMaterial,sceneryMaterial} from './wog/scene-lighting.js';
 import {TerrainRoads} from './wog/terrain-roads.js';
 import {sqmPoint,distance,configuredProfile} from './core.mjs';
-export async function json(url){const r=await fetch(url,{signal:AbortSignal.timeout(60000)});if(!r.ok)throw Error(`${url}: ${r.status}`);return r.json();}
+export const json=assetJson;
 const pause=()=>new Promise(r=>setTimeout(r,0));
 export class PlanningScene {
   constructor(container,status){this.container=container;this.status=status;this.scene=new T.Scene();this.selectionRings=new SelectionRings(this.scene);this.renderer=new T.WebGLRenderer({antialias:true});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=T.SRGBColorSpace;container.prepend(this.renderer.domElement);this.camera=new T.PerspectiveCamera(45,1,.3,90000);this.controls=new OrbitControls(this.camera,this.renderer.domElement);this.controls.enableDamping=true;this.controls.dampingFactor=.12;this.controls.maxPolarAngle=Math.PI*.48;this.controls.minDistance=3;this.controls.screenSpacePanning=false;this.controls.enableZoom=false;this.keys=new Set();this.lang="ru";this.lastFrame=0;this.controls.mouseButtons={LEFT:null,MIDDLE:T.MOUSE.PAN,RIGHT:T.MOUSE.ROTATE};this.ray=new T.Raycaster();this.actors=[];this.overlays=new Map();this.drapes=new Map();this.zoneShapes=new Map();this.nativeTiles=new Map();this.modelCache=new Map();this.collisionTiles=new Map();this.waypoints=new Map();this.lastStream=0;this.resize=new ResizeObserver(()=>{const w=Math.max(1,container.clientWidth),h=Math.max(1,container.clientHeight);this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();});this.resize.observe(container);this.installNavigation();this.renderer.setAnimationLoop(t=>this.render(t));}
@@ -58,7 +59,11 @@ export class PlanningScene {
     const detailMat=terrainMaterial({map:tex});detailMat.onBeforeCompile=roadShader;
     this.detail=new TerrainDetail(this.scene,this.world,this.half,(x,y)=>terrainHeight(terrain,x,y),detailMat,(regions,settled)=>{this.drapesDirty=true;this.environment?.alignGround(regions,settled,this.detail);this.actorsDirty=true;},(x,y)=>coarseNormalAt(terrain,g.getAttribute("normal").array,x,y));await this.detail.metadata();
     if(terrain.minHeight<-1){const wg=new T.BufferGeometry();wg.setAttribute('position',new T.BufferAttribute(waterSurface(terrain),3));wg.computeVertexNormals();this.scene.add(new T.Mesh(wg,sceneryMaterial({color:0x547d8c,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2})));}
-    this.environment=new Environment(this.scene,catalog,this.world,this.half,(x,y)=>this.height(x,y));await this.environment.loadBuildings();
+    this.environment=new Environment(this.scene,catalog,this.world,this.half,(x,y)=>this.height(x,y));
+    // Warm topology in the existing worker as camera resources arrive. This does
+    // not fetch extra tiles, change the accepted geometry, or delay drawing.
+    this.environment.prepareModel=model=>{prepareVisibilityShapes([{geometry:model.geometry,material:model.materials,userData:{category:model.meta.category}}]).catch(console.warn);};
+    await this.environment.loadBuildings();
     this.environment.setMissionObjects(true);this.missionMeshes=[];
     const byId=new Map((mission.planningScene||[]).map(o=>[o.id,o]));
     const units=[];
@@ -80,8 +85,8 @@ export class PlanningScene {
     this.missing=missing;this.labelsDirty=true;this.drawZones(mission.markers);const first=this.units[0]?.point||[this.half,this.half,terrain.maxHeight];this.focus(first,700);
     this.ready=true;this.status(`Сцена готова. Не найдено моделей: ${missing}. Пунктирные метки обозначают заменители.`);
   }
-  async actorModel(key,native=false){if(this.modelCache.has(key))return this.modelCache.get(key);const promise=(async()=>{const meta=(native?this.nativeCatalog:this.actorCatalog).models[key],raw=await json(meta.file),d=!native&&key===this.actorCatalog.infantry?armedInfantry(raw):raw,g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(d.aimPositions||d.positions,3));g.setIndex(d.indices);if(d.uvs)g.setAttribute('uv',new T.Float32BufferAttribute(d.uvs,2));g.computeVertexNormals();for(const r of d.groups||[])g.addGroup(r.start,r.count,r.materialIndex);
-    const mats=await Promise.all((d.materials||[{}]).map(async m=>{let map;if(m.texture){map=await new T.TextureLoader().loadAsync(m.texture);map.colorSpace=T.SRGBColorSpace;}const color=Array.isArray(m.color)?new T.Color(...m.color):m.color||0xffffff;return sceneryMaterial({...map?{map}:{},color,side:T.DoubleSide,alphaTest:m.alphaTest||0});}));return {g,mats:d.groups?.length?mats:mats[0]};})();this.modelCache.set(key,promise);return promise;}
+  async actorModel(key,native=false){return cachedRequest(this.modelCache,(native?'native:':'base:')+key,async()=>{const meta=(native?this.nativeCatalog:this.actorCatalog).models[key],raw=await json(meta.file),d=!native&&key===this.actorCatalog.infantry?armedInfantry(raw):raw,g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(d.aimPositions||d.positions,3));g.setIndex(d.indices);if(d.uvs)g.setAttribute('uv',new T.Float32BufferAttribute(d.uvs,2));g.computeVertexNormals();for(const r of d.groups||[])g.addGroup(r.start,r.count,r.materialIndex);
+    const created=[];try{const mats=await mapLimited(d.materials||[{}],3,async m=>{let map;if(m.texture){map=await cachedRequest(this.actorTextures??=new Map(),m.texture,()=>retryAsset(async()=>{const texture=await new T.TextureLoader().loadAsync(m.texture);texture.colorSpace=T.SRGBColorSpace;return texture;}));}const color=Array.isArray(m.color)?new T.Color(...m.color):m.color||0xffffff,material=sceneryMaterial({...map?{map}:{},color,side:T.DoubleSide,alphaTest:m.alphaTest||0});created.push(material);return material;});return {g,mats:d.groups?.length?mats:mats[0]};}catch(error){g.dispose();for(const m of created)m.dispose();throw error;}});}
   async addActor(u){const nativeKey=this.nativeCatalog.classes[u.vehicleClass.toLowerCase()],native=u.mobility!=='foot'&&!!this.nativeCatalog.models[nativeKey];const key=u.mobility==='foot'?this.actorCatalog.infantry:(native?nativeKey:null)||this.actorCatalog.classes[u.vehicleClass];let mesh;
     if(key){const {g,mats}=await this.actorModel(key,native);let materials=mats;if(u.mobility==='foot'){materials=[mats].flat().map(mat=>{const m=mat.clone();m.color.set(sideColor(u.side));tintMaterial(m,false);clipObserverObjects(m);return m;});if(!Array.isArray(mats))materials=materials[0];}mesh=new T.Mesh(g,materials);}
     else {const id=Object.entries(this.catalog.models).find(([,m])=>m?.classes?.includes(u.vehicleClass)||m?.className===u.vehicleClass)?.[0];if(id==null)throw Error('Нет сопоставления класса');const m=await this.environment.model(id);mesh=new T.Mesh(m.geometry,m.materials);}

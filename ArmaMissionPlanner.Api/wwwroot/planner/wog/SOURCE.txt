@@ -3,3 +3,5 @@ Planner-only adapters: label-clusters.js planning names; environment.js observer
 Planner adapters reuse the final terrain intersection, LOD, lighting, models and navigation formulas.
 
 Planner-only streaming: four tile consumers share the existing six-request network limiter; mission models load in four nearest-first slots. No asset LOD reduction.
+
+Planner asset loading: model materials are shared with the independent highest-detail visibility source; no unused normals computed for that source. Topology is warmed in the existing worker as camera assets arrive. Failed requests are evicted and transient loads retry within fixed bounds.

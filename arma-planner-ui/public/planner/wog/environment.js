@@ -26,11 +26,12 @@ export class Environment {
   const meta=this.catalog.models[id];if(!meta)throw Error(t('Invalid environment model index: ')+id);
   const yieldBefore=workBudget();if(yieldBefore)await yieldBefore;
   const d=meta.pack?(await this.pack(meta.pack))[meta.file]:await read(root+meta.file);
-  const build=async d=>{const g=new THREE.BufferGeometry();let created=[];
+  const materials=new Map(),allocated=[];
+  const build=async (d,visibilityOnly=false)=>{const g=new THREE.BufferGeometry();
   try{
    const wait=workBudget();if(wait)await wait;
-   g.setAttribute('position',new THREE.Float32BufferAttribute(d.positions,3));g.setIndex(d.indices);if(d.uvs)g.setAttribute('uv',new THREE.Float32BufferAttribute(d.uvs,2));g.setAttribute('normal',new THREE.BufferAttribute(await meshNormals(g.attributes.position.array,g.index.array),3));for(const group of d.groups||[])g.addGroup(group.start,group.count,group.materialIndex);
-   created=await mapLimited(d.materials||[{}],3,async m=>{
+   g.setAttribute('position',new THREE.Float32BufferAttribute(d.positions,3));g.setIndex(d.indices);if(d.uvs)g.setAttribute('uv',new THREE.Float32BufferAttribute(d.uvs,2));if(!visibilityOnly)g.setAttribute('normal',new THREE.BufferAttribute(await meshNormals(g.attributes.position.array,g.index.array),3));for(const group of d.groups||[])g.addGroup(group.start,group.count,group.materialIndex);
+   const created=await mapLimited(d.materials||[{}],3,m=>cachedRequest(materials,JSON.stringify(m),async()=>{
     const map=m.texture?await cachedRequest(this.textures,m.texture,async()=>{
      const pack=this.catalog.texturePacks?.[m.texture],url=pack?(await this.pack(pack))[m.texture]:URL.createObjectURL(await resource(root+m.texture,'blob'));
      try{const texture=await new THREE.TextureLoader().loadAsync(url);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;texture.wrapS=texture.wrapT=m.bake?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;return texture;}finally{if(!pack)URL.revokeObjectURL(url);}
@@ -41,14 +42,15 @@ export class Environment {
     const layer=meta.groundDecal|| (meta.missionDecal?2:0);
     const softDecal=!!layer&&((m.alphaTest||0)>0||m.transparent);
     const material=sceneryMaterial({map,color:m.color||0xffffff,alphaTest:softDecal?.005:m.alphaTest||0,transparent:softDecal||!!m.transparent,depthWrite:softDecal?false:m.depthWrite!==false,polygonOffset:!!m.polygonOffset||!!layer,polygonOffsetFactor:layer?-4*layer:m.polygonOffsetFactor||0,polygonOffsetUnits:layer?-4*layer:m.polygonOffsetUnits||0,side:m.doubleSided?THREE.DoubleSide:THREE.FrontSide});
-    if(layer)material.forceSinglePass=true;
+    allocated.push(material);if(layer)material.forceSinglePass=true;
     return material;
-   });
+   }));
    return {geometry:g,materials:d.groups?.length?created:created[0],meta};
-  }catch(error){g.dispose();for(const material of created)material.dispose();throw error;}
-  };const visual=await build(d);
-  if(meta.visibilityFile){const detailed=await build(await read(root+meta.visibilityFile));visual.geometry.userData.visibilityModel=detailed;visual.geometry.addEventListener('dispose',()=>detailed.geometry.dispose());}
-  return visual;
+  }catch(error){g.dispose();throw error;}
+  };let visual;try{visual=await build(d);
+   if(meta.visibilityFile){const detailed=await build(await read(root+meta.visibilityFile),true);visual.geometry.userData.visibilityModel=detailed;visual.geometry.addEventListener('dispose',()=>detailed.geometry.dispose());}
+   return visual;
+  }catch(error){visual?.geometry.dispose();for(const material of allocated)material.dispose();throw error;}
  });}
  async pack(file){
   this.packs??=new Map();this.pendingPacks??=new Map();
