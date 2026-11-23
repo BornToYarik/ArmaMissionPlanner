@@ -140,7 +140,7 @@ export class PlanningScene {
       else if(m.swtTypeIndex===-2||m.swtTypeIndex===-3){this.drawZones([{name:id,markerType:m.swtTypeIndex===-2?'RECTANGLE':'ELLIPSE',widthA:m.scaleX,heightB:m.scaleY,angle:m.angle,color,position:[m.x,h,m.y]}]);}
       const p=[m.x,m.y,h];this.waypoint(id,p,m.text||def?.name||'Метка',()=>onClick(p,m));
       const el=this.waypoints.get(id).el;el.classList.add('plan-marker');el.style.setProperty('--marker-color',color);
-      const asset=markerAssets[String(m.icon||def?.id||'').toLowerCase()];if(asset){const icon=document.createElement('span');icon.className='plan-marker-icon';icon.style.maskImage='url('+asset+')';icon.style.webkitMaskImage='url('+asset+')';el.prepend(icon);}
+      const asset=markerAssets[String(m.icon||def?.id||'').toLowerCase()];if(asset){const icon=document.createElement('span');icon.className='plan-marker-icon';if(m.swtTypeIndex>=0){const size=18*Math.max(.3,Math.min(5,m.scaleX||1));icon.style.width=size+'px';icon.style.height=size+'px';icon.style.transform='rotate('+(Number(m.angle)||0)+'deg)';}icon.style.maskImage='url(/'+asset+')';icon.style.webkitMaskImage='url(/'+asset+')';el.prepend(icon);}
     }
     this.zoneTint.set([...this.zoneShapes.values()]);
   }

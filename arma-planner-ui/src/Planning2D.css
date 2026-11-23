@@ -1,0 +1,8 @@
+.planner-unit-icon{background:none;border:0;color:var(--unit-color);cursor:pointer}
+.planner-unit-symbol{display:block;position:relative;width:100%;height:100%;filter:drop-shadow(0 0 1px #091017) drop-shadow(0 1px 1px #091017)}
+.planner-unit-symbol i{display:block;width:100%;height:100%;background:currentColor;mask-size:contain;mask-position:center;mask-repeat:no-repeat;-webkit-mask-size:contain;-webkit-mask-position:center;-webkit-mask-repeat:no-repeat;transform:rotate(var(--unit-heading));transform-origin:center}
+.planner-unit-icon.is-selected:before{content:'';position:absolute;inset:-5px;border:2px solid currentColor;border-radius:50%;background:#ffffff22;box-shadow:0 0 0 1px #101c26,0 0 4px #0009}
+.planner-unit-caption{position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%);max-width:180px;white-space:nowrap;font:600 12px/1.2 Arial,sans-serif;text-shadow:0 1px 2px #000,1px 0 2px #000,-1px 0 2px #000;pointer-events:none}
+.planner-unit-icon.is-selected .planner-unit-caption{color:#ffeb9e}.planner-unit-icon.is-crowded:not(.is-selected):not(:hover) .planner-unit-caption{display:none}
+.planner-unit-icon:hover{z-index:10000!important}.planner-unit-icon:hover .planner-unit-caption{display:block;background:#122131d9;padding:2px 3px}
+.planner-unit-tooltip{font-size:12px}

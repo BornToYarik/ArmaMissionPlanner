@@ -1,3 +1,6 @@
+import nativeMarkers from '../public/planner/marker-native.json';
+import {markerAssets} from '../public/planner/wog/marker-catalog.js';
+import SwtMarkerEditor from './SwtMarkerEditor';
 import Planning2D from './Planning2D';
 import type {PlannerCommand,PlannerSnapshot} from './planning-sync';
 import Planning3D from './Planning3D';
@@ -95,12 +98,6 @@ function getMissionMarkerColorHex(colorName?: string, colors: SwtColorDef[] = DE
   return '#000000';
 }
 
-const MARKER_SIZES = [
-  { label: 'Маленький (0.7)', value: 0.7 },
-  { label: 'Стандарт (1.0)', value: 1.0 },
-  { label: 'Большой (1.3)', value: 1.3 },
-];
-
 export interface SwtMarkerTypeDef {
   swtIdx: number;
   id: string;
@@ -130,6 +127,10 @@ export const DEFAULT_SWT_MARKER_TYPES: SwtMarkerTypeDef[] = [
   { swtIdx: 30, id: 'mil_dot', name: 'Точка', hasIcon: true, defaultColorHex: '#000000' },
   { swtIdx: 32, id: 'mil_box', name: 'Квадрат', hasIcon: true, defaultColorHex: '#000000' },
   { swtIdx: 34, id: 'mil_triangle', name: 'Треугольник', hasIcon: true, defaultColorHex: '#000000' },
+  { swtIdx: 52, id: 'hd_pickup', name: 'Высадка / посадка', hasIcon: true },
+  { swtIdx: 56, id: 'hd_warning', name: 'Предупреждение', hasIcon: true },
+  { swtIdx: 58, id: 'hd_unknown', name: 'Неизвестно', hasIcon: true },
+  { swtIdx: 73, id: 'o_armor', name: 'Бронетехника (OPFOR)', hasIcon: true, defaultColorHex:'#800000' },
   { swtIdx: 63, id: 'b_inf', name: 'Пехота (BLUFOR)', hasIcon: true, defaultColorHex: '#004d99' },
   { swtIdx: 64, id: 'o_inf', name: 'Пехота (OPFOR)', hasIcon: true, defaultColorHex: '#800000' },
   { swtIdx: 65, id: 'n_inf', name: 'Пехота (IND)', hasIcon: true, defaultColorHex: '#008000' },
@@ -148,6 +149,8 @@ export const DEFAULT_SWT_MARKER_TYPES: SwtMarkerTypeDef[] = [
   { swtIdx: 206, id: 'KIA', name: 'Убит в бою (KIA)', hasIcon: true, defaultColorHex: '#000000' },
   { swtIdx: 207, id: 'Minefield', name: 'Минное поле', hasIcon: true, defaultColorHex: '#e60000' },
 ];
+
+const FALLBACK_SWT_MARKERS:SwtMarkerTypeDef[]=nativeMarkers.map(m=>({...m,...DEFAULT_SWT_MARKER_TYPES.find(d=>d.id===m.id)}));
 
 export interface SwtPlanMarker {
   id: string;
@@ -326,6 +329,7 @@ function renderMarkerHtml(
   const markerClass =
       def?.id || (typeof typeIdxOrName === 'string' && typeIdxOrName ? typeIdxOrName : 'mil_dot');
 
+  const iconUrl=markerAssets[markerClass.toLowerCase()]?'/'+markerAssets[markerClass.toLowerCase()]:'/api/assets/icon/'+encodeURIComponent(markerClass);
   const isDefaultColor = !colorHexOrDefault || colorHexOrDefault.toLowerCase() === 'default';
   const effectiveHex = isDefaultColor
       ? def?.defaultColorHex || '#000000'
@@ -337,10 +341,10 @@ function renderMarkerHtml(
   // Если это многоцветный флаг или иконка локации с цветом Default ([1,1,1,1]) — рисуем оригинальный цветной PNG
   if (isFlagMarkerClass(markerClass) || (def?.isFullColor && isDefaultColor)) {
     return `<div style="transform:translate(-${Math.round(sizePx / 2)}px, -50%);display:flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;">
-      <img src="/api/assets/icon/${encodeURIComponent(markerClass)}" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.8));" onerror="this.style.display='none'" />
+      <img src="${iconUrl}" style="width:${sizePx}px;height:${sizePx}px;object-fit:contain;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,0.8));" onerror="this.style.display='none'" />
       ${
           safeText
-              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.88);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);">${safeText}</span>`
+              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.88);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.max(12, Math.round(12 * scale))}px;border:1px solid rgba(0,0,0,0.25);">${safeText}</span>`
               : ''
       }
     </div>`;
@@ -364,11 +368,11 @@ function renderMarkerHtml(
             <feColorMatrix type="matrix" values="${matrixValues}" />
           </filter>
         </defs>
-        <image href="/api/assets/icon/${encodeURIComponent(markerClass)}" x="0" y="0" width="28" height="28" filter="url(#${filterId})" />
+        <image href="${iconUrl}" x="0" y="0" width="28" height="28" filter="url(#${filterId})" />
       </svg>
       ${
           safeText
-              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
+              ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.max(12, Math.round(12 * scale))}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
               : ''
       }
     </div>`;
@@ -382,7 +386,7 @@ function renderMarkerHtml(
     </svg>
     ${
         safeText
-            ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.round(12 * scale)}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
+            ? `<span style="color:${labelHex};background:rgba(255,255,255,0.86);padding:0px 5px;border-radius:3px;font-weight:bold;font-size:${Math.max(12, Math.round(12 * scale))}px;border:1px solid rgba(0,0,0,0.25);box-shadow:0 1px 2px rgba(0,0,0,0.4);">${safeText}</span>`
             : ''
     }
   </div>`;
@@ -397,7 +401,7 @@ export default function App() {
   const [selectedSide, setSelectedSide] = useState<string>('');
 
   const [assetNames, setAssetNames] = useState<Record<string, string>>({});
-  const [markerCatalog, setMarkerCatalog] = useState<SwtMarkerTypeDef[]>(DEFAULT_SWT_MARKER_TYPES);
+  const [markerCatalog, setMarkerCatalog] = useState<SwtMarkerTypeDef[]>(FALLBACK_SWT_MARKERS);
   const [colorCatalog, setColorCatalog] = useState<SwtColorDef[]>(DEFAULT_SWT_COLORS);
 
   const [unitAssignments, setUnitAssignments] = useState<Record<number, string>>({});
@@ -413,17 +417,7 @@ export default function App() {
   const [activeMarkerAngle, setActiveMarkerAngle] = useState<number>(0);
   const [swtArrayText, setSwtArrayText] = useState('');
 
-  const [popupModal, setPopupModal] = useState<{
-    x: number;
-    y: number;
-    screenX: number;
-    screenY: number;
-    text: string;
-    swtTypeIdx: number;
-    swtColorIdx: number;
-    scale: number;
-    angle: number;
-  } | null>(null);
+  const [popupModal, setPopupModal] = useState<{x:number;y:number;screenX:number;screenY:number;marker?:SwtPlanMarker}|null>(null);
 
   const [mapConfig, setMapConfig] = useState<OcapMapConfig>(KNOWN_MAPS.altis);
   const [tileAlignMode, setTileAlignMode] = useState<'worldSize' | 'imageSize' | 'tms'>('worldSize');
@@ -493,16 +487,6 @@ export default function App() {
         })
         .catch(() => {});
   }, []);
-
-  const selectableSwtMarkers = useMemo(() => {
-    return markerCatalog.filter(m => {
-      const lower = m.id.toLowerCase();
-      if (lower === 'empty' || lower === 'emptyicon' || lower === 'ace_markers_textonly') return false;
-      if (lower.endsWith('_noshadow')) return false;
-      if (m.hasIcon === false) return false;
-      return true;
-    });
-  }, [markerCatalog]);
 
   const formatClassTitle = (cls?: string) => {
     if (!cls) return '—';
@@ -936,21 +920,7 @@ export default function App() {
       L.DomEvent.stopPropagation(e);
       if (!e.latlng || !Number.isFinite(e.latlng.lat) || !Number.isFinite(e.latlng.lng)) return;
 
-      const containerRect = mapContainerRef.current?.getBoundingClientRect();
-      const screenX = e.originalEvent.clientX - (containerRect?.left ?? 0);
-      const screenY = e.originalEvent.clientY - (containerRect?.top ?? 0);
-
-      setPopupModal({
-        x: Number(e.latlng.lng.toFixed(2)),
-        y: Number(e.latlng.lat.toFixed(2)),
-        screenX: Math.max(10, Math.min(screenX, (containerRect?.width ?? 800) - 310)),
-        screenY: Math.max(10, Math.min(screenY, (containerRect?.height ?? 600) - 360)),
-        text: '',
-        swtTypeIdx: activeTypeRef.current,
-        swtColorIdx: activeColorRef.current,
-        scale: activeScaleRef.current,
-        angle: activeAngleRef.current,
-      });
+      setPopupModal({x:Number(e.latlng.lng.toFixed(2)),y:Number(e.latlng.lat.toFixed(2)),screenX:e.originalEvent.clientX,screenY:e.originalEvent.clientY});
     });
 
     let drawMode: 'freeLine' | 'straightLine' | 'rectStrip' | 'ellipse' | null = null;
@@ -1314,6 +1284,10 @@ export default function App() {
       });
 
       const marker = L.marker([m.y, m.x], { icon }).addTo(layer);
+      marker.on('dblclick', (e:L.LeafletMouseEvent)=>{
+        L.DomEvent.stopPropagation(e);
+        setPopupModal({x:m.x,y:m.y,screenX:e.originalEvent.clientX,screenY:e.originalEvent.clientY,marker:m});
+      });
 
       marker.on('mouseover', () => {
         hoveredMarkerIdRef.current = m.id;
@@ -1360,29 +1334,13 @@ export default function App() {
     });
   }, [planMarkers, planning3d, activeTab, mapConfig, tileAlignMode, markerCatalog]);
 
-  const confirmPopupMarker = () => {
-    if (!popupModal) return;
-    const colorDef = getSwtColorByIdx(popupModal.swtColorIdx, colorCatalog);
-    setPlanMarkers(prev => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        text: popupModal.text,
-        x: popupModal.x,
-        y: popupModal.y,
-        swtTypeIndex: popupModal.swtTypeIdx,
-        swtColorIndex: popupModal.swtColorIdx,
-        color: popupModal.swtColorIdx === 0 ? 'Default' : colorDef.hex,
-        angle: popupModal.angle,
-        scaleX: popupModal.scale,
-        scaleY: popupModal.scale,
-        polyCoords: [],
-      },
-    ]);
-    setActiveTypeSwtIdx(popupModal.swtTypeIdx);
-    setActiveColorSwtIdx(popupModal.swtColorIdx);
-    setActiveMarkerScale(popupModal.scale);
-    setActiveMarkerAngle(popupModal.angle);
+  const confirmPopupMarker = (marker:SwtPlanMarker|null) => {
+    if(marker){
+      setPlanMarkers(prev=>prev.some(m=>m.id===marker.id)?prev.map(m=>m.id===marker.id?marker:m):[...prev,marker]);
+      if(marker.swtTypeIndex>=0){setActiveTypeSwtIdx(marker.swtTypeIndex);setActiveMarkerScale(marker.scaleX);}
+      setActiveColorSwtIdx(marker.swtColorIndex);
+      setActiveMarkerAngle(marker.angle);
+    }
     setPopupModal(null);
   };
 
@@ -1797,157 +1755,7 @@ export default function App() {
                               className="relative z-0 w-full h-full rounded-xl border border-slate-800 overflow-hidden"
                           />
 
-                          {popupModal && (
-                              <div
-                                  style={{ left: popupModal.screenX, top: popupModal.screenY }}
-                                  onWheel={e => {
-                                    if (e.shiftKey) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const sizes = [0.7, 1.0, 1.3];
-                                      const curIdx = sizes.indexOf(popupModal.scale);
-                                      const nextIdx =
-                                          e.deltaY < 0
-                                              ? Math.min(sizes.length - 1, curIdx + 1)
-                                              : Math.max(0, curIdx - 1);
-                                      setPopupModal(p => (p ? { ...p, scale: sizes[nextIdx] } : null));
-                                    }
-                                  }}
-                                  className="absolute z-[1500] w-72 bg-slate-900/95 backdrop-blur border border-emerald-500/60 rounded-xl shadow-2xl p-3.5 space-y-2.5 text-xs"
-                              >
-                                <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                          <span className="font-bold text-emerald-400">
-                            Новая метка [{Math.round(popupModal.x)}, {Math.round(popupModal.y)}]
-                          </span>
-                                  <button
-                                      onClick={() => setPopupModal(null)}
-                                      className="text-slate-400 hover:text-white"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-
-                                <div className="flex items-center justify-center py-2 bg-slate-950 rounded border border-slate-800">
-                                  <div
-                                      dangerouslySetInnerHTML={{
-                                        __html: renderMarkerHtml(
-                                            popupModal.swtTypeIdx,
-                                            popupModal.swtColorIdx === 0
-                                                ? 'Default'
-                                                : getSwtColorByIdx(popupModal.swtColorIdx, colorCatalog).hex,
-                                            popupModal.text || 'Превью',
-                                            popupModal.angle,
-                                            popupModal.scale,
-                                            markerCatalog
-                                        ),
-                                      }}
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block text-slate-400 mb-0.5">Текст метки:</label>
-                                  <input
-                                      type="text"
-                                      autoFocus
-                                      value={popupModal.text}
-                                      onChange={e => setPopupModal(p => (p ? { ...p, text: e.target.value } : null))}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') confirmPopupMarker();
-                                        if (e.key === 'Escape') setPopupModal(null);
-                                      }}
-                                      placeholder="Текст (Enter — поставить)"
-                                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none text-slate-100"
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block text-slate-400 mb-0.5">
-                                    Вид иконки (из дампа Arma 3, {selectableSwtMarkers.length} шт.):
-                                  </label>
-                                  <select
-                                      value={popupModal.swtTypeIdx}
-                                      onChange={e =>
-                                          setPopupModal(p => (p ? { ...p, swtTypeIdx: Number(e.target.value) } : null))
-                                      }
-                                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none text-slate-100"
-                                  >
-                                    {selectableSwtMarkers.map(t => (
-                                        <option key={t.swtIdx} value={t.swtIdx}>
-                                          {`#${t.swtIdx} — ${t.name} (${t.id})`}
-                                        </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div>
-                                  <label className="block text-slate-400 mb-0.5">Цвет (CfgMarkerColors):</label>
-                                  <select
-                                      value={popupModal.swtColorIdx}
-                                      onChange={e =>
-                                          setPopupModal(p => (p ? { ...p, swtColorIdx: Number(e.target.value) } : null))
-                                      }
-                                      className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none text-slate-100"
-                                  >
-                                    {colorCatalog.map(c => (
-                                        <option key={c.swtIdx} value={c.swtIdx}>
-                                          {c.name}
-                                        </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-slate-400 mb-0.5">Размер (Shift+Колесо):</label>
-                                    <select
-                                        value={popupModal.scale}
-                                        onChange={e =>
-                                            setPopupModal(p => (p ? { ...p, scale: Number(e.target.value) } : null))
-                                        }
-                                        className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 outline-none"
-                                    >
-                                      {MARKER_SIZES.map(s => (
-                                          <option key={s.value} value={s.value}>
-                                            {s.label}
-                                          </option>
-                                      ))}
-                                    </select>
-                                  </div>
-
-                                  <div>
-                                    <label className="block text-slate-400 mb-0.5">
-                                      Наклон: <b>{Math.round(popupModal.angle)}°</b>
-                                    </label>
-                                    <input
-                                        type="range"
-                                        min={0}
-                                        max={355}
-                                        step={5}
-                                        value={popupModal.angle}
-                                        onChange={e =>
-                                            setPopupModal(p => (p ? { ...p, angle: Number(e.target.value) } : null))
-                                        }
-                                        className="w-full accent-emerald-500 mt-1.5"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex gap-2 pt-1">
-                                  <button
-                                      onClick={confirmPopupMarker}
-                                      className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-1.5 rounded transition"
-                                  >
-                                    ОК (Enter)
-                                  </button>
-                                  <button
-                                      onClick={() => setPopupModal(null)}
-                                      className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"
-                                  >
-                                    Отмена
-                                  </button>
-                                </div>
-                              </div>
-                          )}
+                          {popupModal && <SwtMarkerEditor marker={popupModal.marker||{x:popupModal.x,y:popupModal.y}} catalog={markerCatalog} colors={colorCatalog} anchor={[popupModal.screenX,popupModal.screenY]} onDone={confirmPopupMarker}/>}
                         </div>
                       </div>
 

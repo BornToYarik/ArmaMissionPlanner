@@ -1,0 +1,5 @@
+WOG Stats 2D replay vehicle/man glyphs, extracted without shape changes from the public WOG icon font.
+Source: https://stats.wogames.info/fonts/wog/icomoon.svg?edqugd
+Reference: https://stats.wogames.info/replays/3921/
+Retrieved: 2026-11-23. Original glyph coordinates normalized from font ascent 960.
+Only the 11 replay categories are included; no complete font or site bundle.

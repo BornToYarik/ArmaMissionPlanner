@@ -1,0 +1,2 @@
+Marker UI: inspected installed @WOG_Mods/addons/swt_markers_a3.pbo UI/onLoad.sqf, UI/DisplayHandlers.sqf and UI/ui.sqf (2026-11-23). Six favorite icons/colors, selection keys and size steps. Web implementation is original.
+Fallback catalog and original icon textures: existing WOG Replay export of installed CfgMarkers on 2026-11-01. Saved engine export order retained; authoritative backend catalog overrides when available. Textures are deduplicated by source.
